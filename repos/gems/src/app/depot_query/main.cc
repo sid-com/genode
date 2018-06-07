@@ -18,6 +18,7 @@
 #include <os/reporter.h>
 #include <gems/vfs.h>
 #include <depot/archive.h>
+#include <os/backtrace.h>
 
 namespace Depot_query {
 	using namespace Depot;
@@ -471,6 +472,8 @@ void Depot_query::Main::_query_blueprint(Directory::Path const &pkg_path, Xml_ge
 			});
 
 			String<160> comment("\n\n<!-- content of '", pkg_path, "/runtime' -->\n");
+					Genode::backtrace();
+					Genode::warning("line ", __LINE__);
 			xml.append(comment.string());
 			xml.append(node.addr(), node.size());
 			xml.append("\n");
@@ -579,6 +582,8 @@ void Depot_query::Main::_query_user(Archive::User const &user, Xml_generator &xm
 			typedef String<80> Line;
 			pubkey.for_each_line<Line>([&] (Line const &line) {
 				xml.append_sanitized(line.string());
+					Genode::backtrace();
+					Genode::warning("line ", __LINE__);
 				xml.append("\n");
 			});
 		});

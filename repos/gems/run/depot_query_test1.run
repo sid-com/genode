@@ -11,7 +11,8 @@ import_from_depot genodelabs/src/[base_src] \
 create_tar_from_depot_binaries [run_dir]/genode/depot.tar \
                                genodelabs/pkg/test-fs_report \
                                insidioussid/pkg/debian_vdi_slice/2018-06-07 \
-                               insidioussid/pkg/chroot/2018-05-28   
+                               insidioussid/pkg/chroot/2018-05-28   \
+                               insidioussid/pkg/vfs/2018-06-05   
                                
 
 proc query_pkg {} {
@@ -100,33 +101,30 @@ install_config {
 			
 			<start name="debian_9_4_depot_fs" pkg="insidioussid/pkg/chroot/2018-05-28">
 				<route>
-					<!--<service name="File_system"> <child name="default_fs_rw"/> </service>-->
-					<service name="File_system"> <child name="default_fs_rw"/> </service>
+					<service name="File_system"> <child name="vm1_base"/> </service>
 				</route>
-				<config> <default-policy path="tmpvdi" writeable="no"/> </config>
+				<config> <default-policy path="/" writeable="yes"/> </config>
 			</start>
-
-			<!-- vm1 -->
+			
 			<start name="vm1_base_storage_fs" pkg="insidioussid/pkg/chroot/2018-05-28">
 				<route>
-					<service name="File_system"> <child name="default_fs_rw"/> </service>
+					<service name="File_system"> <child name="debian_9_4_depot_fs"/> </service>
 				</route>
 				<config> <default-policy path="slices/vm1_base" writeable="yes"/> </config>
 			</start>
 			
-			<start name="vm1_base" pkg="rite/pkg/vfs/2018-06-05" version="24">
+			<start name="vm1_base" pkg="insidioussid/pkg/vfs/2018-06-05">
 				<route>
-					<service name="File_system" label="depot_fs"> <child name="debian_9_4_depot_fs"/> </service>
-					<service name="File_system" label="slice_storage_fs"> <child name="vm1_base_storage_fs"/> </service>
+					<service name="File_system" label="depot_fs"> <child name="vm1_base_storage_fs"/> </service>
 				</route>
 				<config>
 					<vfs>
 						<dir name="template"> <fs label="depot_fs"/> </dir>
-						<dir name="storage"> <fs label="slice_storage_fs"/> </dir>
 					</vfs>
 					<default-policy path="/" writeable="yes"/>
 				</config>
 			</start> 
+			
 <!--
 			<start name="vm1_base" pkg="insidioussid/pkg/debian_vdi_slice/2018-06-07">
 				<route>
@@ -161,5 +159,5 @@ build_boot_image { init depot_query depot_deploy vfs.lib.so }
 
 append qemu_args " -nographic "
 
-run_genode_until {.*child "test-fs_report" exited with exit value 0.*\n} 2
+run_genode_until {.*child "test-fs_report" exited with exit value 0.*\n} 10
 
