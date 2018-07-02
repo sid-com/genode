@@ -206,6 +206,7 @@ class Genode::Xml_node
 		typedef Xml_attribute::Invalid_syntax        Invalid_syntax;
 
 		class Nonexistent_sub_node  : public Exception { };
+		class Unexpected_content    : public Exception { };
 
 
 		/**
@@ -706,6 +707,42 @@ class Genode::Xml_node
 			size_t const len = decoded_content(buf, sizeof(buf) - 1);
 			buf[min(len, sizeof(buf) - 1)] = 0;
 			return STRING(Cstring(buf));
+		}
+
+		/**
+		 * Return content of a node with default value
+		 *
+		 * \param default_value  default value
+		 * \return               XML content
+		 *
+		 * In case of an error while parsing the content, the default
+		 * value given will be returned.
+		 */
+		template <typename T>
+		inline T content_value(T default_value) const
+		{
+			T result = default_value;
+			T temp_result = T();
+			if (ascii_to(content_base(), temp_result) == content_size()) {
+				result = temp_result;
+			}
+			return result;
+		}
+
+		/**
+		 * Return content of a node
+		 *
+		 * \throw Unexpected_content  unexpected content
+		 * \return                    XML content
+		 */
+		template <typename T>
+		inline T content_value() const
+		{
+			T result = T();
+			if (ascii_to(content_base(), result) != content_size()) {
+				throw Unexpected_content();
+			}
+			return result;
 		}
 
 		/**
