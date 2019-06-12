@@ -39,8 +39,9 @@ extern ssh_channel session_channel_open_request_cb(ssh_session, void *);
 
 Ssh::Server::Server(Genode::Env &env,
                     Genode::Xml_node const &config,
-                    Ssh::Login_registry    &logins) :
-	_env{ env }, _heap{ env.ram(), env.rm() }, _logins{ logins }
+                    Ssh::Login_registry    &logins)
+:
+	_env(env), _heap(env.ram(), env.rm()), _logins(logins)
 {
 	Libc::with_libc([&] {
 
@@ -261,17 +262,6 @@ void *Ssh::Server::_server_loop(void *arg)
 }
 
 
-int Ssh::Server::_stderr_avail_cb(socket_t fd, int revents, void *userdata)
-{
-	int n = 0;
-	Libc::with_libc([&] {
-		char c;
-		n = ::read(fd, &c, sizeof(char));
-	});
-	return n;
-}
-
-
 bool Ssh::Server::_allow_multi_login(ssh_session s, Login const &login)
 {
 	if (login.multi_login) { return true; }
@@ -291,7 +281,7 @@ void Ssh::Server::_log_failed(char const *user, Session const &s, bool pubkey)
 
 	char const *date = Util::get_time();
 	Genode::log(date, " failed user ", user, " (", s.id(), ") ",
-				"with ", pubkey ? "public-key" : "password");
+	            "with ", pubkey ? "public-key" : "password");
 }
 
 
@@ -310,7 +300,7 @@ void Ssh::Server::_log_login(User const &user, Session const &s, bool pubkey)
 
 	char const *date = Util::get_time();
 	Genode::log(date, " login user ", user, " (", s.id(), ") ",
-				"with ", pubkey ? "public-key" : "password");
+	            "with ", pubkey ? "public-key" : "password");
 }
 
 
@@ -429,7 +419,7 @@ bool Ssh::Server::request_terminal(Session &session,
 	if (_log_logins) {
 		char const *date = Util::get_time();
 		Genode::log(date, " request Terminal for user ", session.user(),
-					" (", session.session, ")");
+		            " (", session.session, ")");
 	}
 
 	return true;
@@ -467,9 +457,7 @@ void Ssh::Server::incoming_connection(ssh_session s)
 	 */
 	int key_exchange_result = ssh_handle_key_exchange(s);
 
-	if (SSH_OK == key_exchange_result) {
-		Genode::log("key exchange successful");
-	} else {
+	if (SSH_OK != key_exchange_result) {
 		Genode::warning("key exchange returned ", key_exchange_result);
 	}
 
@@ -513,8 +501,8 @@ bool Ssh::Server::auth_password(ssh_session s, char const *u, char const *pass)
 		if (_log_logins) {
 			char const *date = Util::get_time();
 			Genode::log(date, " disconnect user ", u, " (", session.id(),
-						") after ", i, " failed authentication attempts"
-						" with password");
+			            ") after ", i, " failed authentication attempts"
+			            " with password");
 		}
 		ssh_disconnect(session.session);
 	}
@@ -541,7 +529,7 @@ bool Ssh::Server::auth_pubkey(ssh_session s, char const *u,
 		Genode::Lock::Guard g(_logins.lock());
 		Login const *l = _logins.lookup(u);
 		if (l && !ssh_key_cmp(pubkey, l->pub_key,
-							  SSH_KEY_CMP_PUBLIC)) {
+		                      SSH_KEY_CMP_PUBLIC)) {
 			if (_allow_multi_login(s, *l)) {
 				session.auth_sucessful = true;
 				session.adopt(l->user);
@@ -605,4 +593,15 @@ void Ssh::Server::_wake_loop()
 		char c = 1;
 		::write(_server_fds[1], &c, sizeof(c));
 	});
+}
+
+
+static int write_avail_cb(socket_t fd, int revents, void *userdata)
+{
+	int n = 0;
+	Libc::with_libc([&] {
+		char c;
+		n = ::read(fd, &c, sizeof(char));
+	});
+	return n;
 }

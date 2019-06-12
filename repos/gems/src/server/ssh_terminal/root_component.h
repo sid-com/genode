@@ -37,16 +37,18 @@ class Terminal::Root_component : public Genode::Root_component<Session_component
 {
 	private:
 
-		typedef Terminal::Root_component The_root;
+		Genode::Env &_env;
 
-		Genode::Env                      &_env;
-		Genode::Attached_rom_dataspace    _config_rom   { _env, "config" };
-		Genode::Xml_node                  _config       { _config_rom.xml() };
-		Genode::Heap                      _logins_alloc { _env.ram(), _env.rm() };
-		Ssh::Login_registry               _logins       { _logins_alloc };
-		Ssh::Server                       _server       { _env, _config, _logins };
-		Genode::Signal_handler<The_root>  _config_sigh  {
-			_env.ep(), *this, &The_root::_handle_config_update };
+		Genode::Attached_rom_dataspace _config_rom   { _env, "config" };
+		Genode::Xml_node               _config       { _config_rom.xml() };
+
+		Genode::Heap        _logins_alloc { _env.ram(), _env.rm() };
+		Ssh::Login_registry _logins       { _logins_alloc };
+
+		Ssh::Server _server { _env, _config, _logins };
+
+		Genode::Signal_handler<Terminal::Root_component>  _config_sigh  {
+			_env.ep(), *this, &Terminal::Root_component::_handle_config_update };
 
 		void _handle_config_update()
 		{
@@ -97,10 +99,11 @@ class Terminal::Root_component : public Genode::Root_component<Session_component
 	public:
 
 		Root_component(Genode::Env       &env,
-		               Genode::Allocator &md_alloc) :
-			Genode::Root_component<Session_component>{ &env.ep().rpc_ep(),
-			                                           &md_alloc },
-			_env{ env }
+		               Genode::Allocator &md_alloc)
+		:
+			Genode::Root_component<Session_component>(&env.ep().rpc_ep(),
+			                                          &md_alloc),
+			_env(env)
 		{
 			_config_rom.sigh(_config_sigh);
 			_handle_config_update();

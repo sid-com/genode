@@ -30,7 +30,6 @@
 
 /**
  * Handle SSH channel data request
- *
  */
 int channel_data_cb(ssh_session session, ssh_channel channel,
                     void *data, uint32_t len, int is_stderr,
@@ -109,8 +108,7 @@ int channel_pty_request_cb(ssh_session session, ssh_channel channel,
 	using namespace Genode;
 	Ssh::Server &server = *reinterpret_cast<Ssh::Server*>(userdata);
 	Ssh::Session *p = server.lookup_session(session);
-	if (!p || p->channel != channel) {
-		return SSH_ERROR; }
+	if (!p || p->channel != channel) { return SSH_ERROR; }
 
 	/*
 	 * Look up terminal and in case there is none, check
@@ -121,9 +119,6 @@ int channel_pty_request_cb(ssh_session session, ssh_channel channel,
 	if (!p->terminal) {
 		p->terminal = server.lookup_terminal(*p);
 		if (!p->terminal) {
-
-			Genode::log("Terminal settings: cols=", cols,
-			            " rows=", rows);
 			return server.request_terminal(*p) ? SSH_OK
 			                                   : SSH_ERROR;
 		}
@@ -154,8 +149,7 @@ int channel_pty_window_change_cb(ssh_session session, ssh_channel channel,
 	using namespace Genode;
 	Ssh::Server &server = *reinterpret_cast<Ssh::Server*>(userdata);
 	Ssh::Session *p = server.lookup_session(session);
-	if (!p || p->channel != channel || !p->terminal) {
-		return SSH_ERROR; }
+	if (!p || p->channel != channel || !p->terminal) { return SSH_ERROR; }
 
 	Ssh::Terminal &conn = *p->terminal;
 	conn.size(Terminal::Session::Size(width, height));
@@ -204,13 +198,17 @@ int channel_exec_request_cb(ssh_session session, ssh_channel channel,
 		p->terminal = server.lookup_terminal(*p);
 		if (!p->terminal) {
 			return server.request_terminal(*p, command) ? SSH_OK
-			: SSH_ERROR;
+			                                            : SSH_ERROR;
 		}
 	}
-	// Exec commands can only be done with newly started terminals
+	/* exec commands can only be done with newly started terminals */
 	return SSH_ERROR;
 }
 
+
+/***********************
+ ** Session callbacks **
+ ***********************/
 
 /**
  * Handle SSH session service requests

@@ -281,7 +281,6 @@ if {[get_cmd_switch --autopilot]} {
 		puts "test interactive channel"
 		spawn sshpass -p xuon ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -l noux $host -p $port
 		set ssh_id $spawn_id
-		run_genode_until "key exchange successful" 15 $serial_id
 		run_genode_until "--- noux started ---" 15 $serial_id
 		send -i $ssh_id "ls\r"
 		run_genode_until "bin" 5 $ssh_id
@@ -292,7 +291,6 @@ if {[get_cmd_switch --autopilot]} {
 		set echo_text "The quick brown fox jumps over the lazy dog"
 		spawn sshpass -p xuon ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -l noux $host -p $port "echo $echo_text"
 		set ssh_id $spawn_id
-		run_genode_until "key exchange successful" 15 $serial_id
 		run_genode_until "--- noux started ---" 15 $serial_id
 		run_genode_until $echo_text 5 $ssh_id
 		run_genode_until "child \"noux\" exited with exit value 0" 15 $serial_id
@@ -300,7 +298,6 @@ if {[get_cmd_switch --autopilot]} {
 		puts "test exec channel ls"
 		spawn sshpass -p xuon ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -l noux $host -p $port "ls"
 		set ssh_id $spawn_id
-		run_genode_until "key exchange successful" 15 $serial_id
 		run_genode_until "--- noux started ---" 15 $serial_id
 		run_genode_until "bin" 5 $ssh_id
 		run_genode_until "child \"noux\" exited with exit value 0" 15 $serial_id
@@ -308,7 +305,6 @@ if {[get_cmd_switch --autopilot]} {
 		puts "test exec channel with empty command will not hang"
 		spawn sshpass -p xuon ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -l noux $host -p $port " "
 		set ssh_id $spawn_id
-		run_genode_until "key exchange successful" 15 $serial_id
 		run_genode_until "--- noux started ---" 15 $serial_id
 		run_genode_until "child \"noux\" exited with exit value" 15 $serial_id
 	}

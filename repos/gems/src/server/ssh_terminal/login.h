@@ -58,10 +58,11 @@ struct Ssh::Login : Genode::Registry<Ssh::Login>::Element
 	      Ssh::Password  const &pw,
 	      Filename       const &pk_file,
 	      bool           const multi_login,
-	      bool           const request_terminal) :
-		Element{ reg, *this },
-		user{ user }, password{ pw }, multi_login{ multi_login },
-		request_terminal{ request_terminal }
+	      bool           const request_terminal)
+	:
+		Element(reg, *this),
+		user(user), password(pw), multi_login(multi_login),
+		request_terminal(request_terminal)
 	{
 		Libc::with_libc([&] {
 

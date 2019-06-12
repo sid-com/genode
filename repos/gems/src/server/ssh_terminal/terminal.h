@@ -83,14 +83,14 @@ class Ssh::Terminal
 		 * Register signal handler to be notified once the size was changed
 		 */
 		void size_changed_sigh(Signal_context_capability sigh) {
-			_size_changed_sigh = sigh;
-		}
+			_size_changed_sigh = sigh; }
 
 		/**
 		 * Register signal handler to be notified once we accepted the TCP
 		 * connection
 		 */
-		void connected_sigh(Signal_context_capability sigh) {
+		void connected_sigh(Signal_context_capability sigh)
+		{
 			_connected_sigh = sigh;
 
 			if (_attached_channels > 0) {
@@ -127,9 +127,7 @@ class Ssh::Terminal
 		 */
 		void notify_read_avail()
 		{
-			if (!_read_avail_sigh.valid()) {
-				return;
-			}
+			if (!_read_avail_sigh.valid()) { return; }
 			Signal_transmitter(_read_avail_sigh).submit();
 		}
 

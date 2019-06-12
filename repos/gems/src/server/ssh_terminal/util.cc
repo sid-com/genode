@@ -26,14 +26,10 @@ char const *Util::get_time()
 		if (clock_gettime(0, &ts)) { return; }
 
 		struct tm *tm = localtime((time_t*)&ts.tv_sec);
-		if (!tm) {
-			return;
-		}
+		if (!tm) { return; }
 
 		size_t const n = strftime(buffer, sizeof(buffer), "%F %H:%M:%S", tm);
-		if (n > 0 && n < sizeof(buffer)) {
-			p = buffer;
-		}
+		if (n > 0 && n < sizeof(buffer)) { p = buffer; }
 	}); /* Libc::with_libc */
 
 	return p;

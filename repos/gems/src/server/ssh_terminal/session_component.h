@@ -40,9 +40,10 @@ class Terminal::Session_component : public Genode::Rpc_object<Session, Session_c
 
 		Session_component(Genode::Env &env,
 		                  Genode::size_t io_buffer_size,
-		                  Ssh::User const &user) :
-			Ssh::Terminal{ user },
-			_io_buffer{ env.ram(), env.rm(), io_buffer_size }
+		                  Ssh::User const &user)
+		:
+			Ssh::Terminal(user),
+			_io_buffer(env.ram(), env.rm(), io_buffer_size)
 		{ }
 
 		virtual ~Session_component() = default;
