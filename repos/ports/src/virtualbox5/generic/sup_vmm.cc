@@ -823,15 +823,19 @@ static int _map_memory(Genode::Vm_connection &vm_session,
 			} catch (Genode::Vm_session::Region_conflict) {
 				/* XXX PGMUnmapMemoryGenode on vm_session does not flush caps */
 				vm_session.detach(GCPhys, mapping_size);
-
 				if (retry) {
-					Genode::error("region conflict - ", Genode::Hex(GCPhys),
-					              " ", Genode::Hex(mapping_size), " vmm_local=",
-					              Genode::Hex(vmm_local), " ", region->cap,
-					              " region=", Genode::Hex(region->vmm_local),
-					              "+", Genode::Hex(region->size));
+					Genode::log("region conflict - ", Genode::Hex(GCPhys),
+					            " ", Genode::Hex(mapping_size), " vmm_local=",
+					            Genode::Hex(vmm_local), " ", region->cap,
+					            " region=", Genode::Hex(region->vmm_local),
+					            "+", Genode::Hex(region->size));
 
-					vm_session.detach(GCPhys - offset, region->size);
+					size_t detach_size = mapping_size;
+					while (detach_size) {
+						size_t const size = 4096;
+						vm_session.detach(GCPhys + (mapping_size - detach_size), size);
+						detach_size -= detach_size > size ? size : detach_size;
+					}
 
 					return VERR_PGM_DYNMAP_FAILED;
 				}
