@@ -55,8 +55,15 @@ int channel_data_cb(ssh_session session, ssh_channel channel,
 	}
 
 	if (!p->terminal) {
-		error("no terminal");
-		return SSH_ERROR;
+		/* waiting for terminal session */
+		uint8_t timeout = 10u;
+		while (!p->terminal) {
+			sleep(1);
+			if (--timeout == 0) {
+				error("timeout while waiting for terminal session");
+				return SSH_ERROR;
+			}
+		}
 	}
 
 	Ssh::Terminal &conn      { *p->terminal };
