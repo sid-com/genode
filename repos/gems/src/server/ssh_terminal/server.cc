@@ -318,12 +318,11 @@ void Ssh::Server::attach_terminal(Ssh::Terminal &conn)
 	}
 
 	/* there might be sessions already waiting on the terminal */
-	bool attached = false;
 	auto lookup = [&] (Session &s) {
 		if (s.user() == conn.user() && !s.terminal) {
+			conn.raw_mode = s.is_exec_request;
 			s.terminal = &conn;
 			s.terminal->attach_channel();
-			attached = true;
 		}
 	};
 	_sessions.for_each(lookup);

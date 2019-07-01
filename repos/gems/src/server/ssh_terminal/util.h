@@ -52,6 +52,14 @@ struct Util::Buffer
 	char const *content() const { return &_data[_tail]; }
 
 	void append(char c)    { _data[_head++] = c; }
+	size_t append(char const *src, size_t len) {
+		size_t num_bytes { 0 };
+		while ((write_avail() > 0) && (num_bytes < len)) {
+			append(src[num_bytes]);
+			num_bytes++;
+		}
+		return num_bytes;
+	}
 	void consume(size_t n) { _tail += n; }
 	void reset()           { _head = _tail = 0; }
 

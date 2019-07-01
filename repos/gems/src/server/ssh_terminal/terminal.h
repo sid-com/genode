@@ -41,7 +41,8 @@ class Ssh::Terminal
 
 		Util::Buffer<4096u> read_buf { };
 
-		int write_avail_fd { -1 };
+		int  write_avail_fd { -1 };
+		bool raw_mode       { false };
 
 	private:
 
@@ -217,24 +218,22 @@ class Ssh::Terminal
 			Lock::Guard g(_write_buf.lock());
 
 			size_t num_bytes = 0;
-			size_t i = 0;
 			Libc::with_libc([&] {
-				while (_write_buf.write_avail() > 0 && i < src_len) {
+				if (raw_mode) {
+					num_bytes = _write_buf.append(src, src_len);
+				} else {
+					while (_write_buf.write_avail() > 0 && num_bytes < src_len) {
 
-					char c = src[i];
-					if (c == '\n') {
-						_write_buf.append('\r');
+						char c = src[num_bytes];
+						if (c == '\n') {
+							_write_buf.append('\r');
+						}
+
+						_write_buf.append(c);
+						num_bytes++;
 					}
-
-					_write_buf.append(c);
-					num_bytes++;
-
-					i++;
 				}
-			});
-
-			/* wake the event loop up */
-			Libc::with_libc([&] {
+				/* wake the event loop up */
 				char c = 1;
 				::write(write_avail_fd, &c, sizeof(c));
 			});

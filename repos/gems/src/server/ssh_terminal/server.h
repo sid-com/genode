@@ -58,6 +58,7 @@ struct Ssh::Session : Genode::Registry<Session>::Element
 
 	int  bad_auth_attempts { 0 };
 	bool auth_sucessful    { false };
+	bool is_exec_request   { false };
 
 	ssh_session session              { nullptr };
 	ssh_channel channel              { nullptr };
