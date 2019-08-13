@@ -59,7 +59,7 @@ class Terminal::Session_component : public Genode::Rpc_object<Session, Session_c
 		Genode::size_t write(void const *buf, Genode::size_t) override { return 0; }
 
 		Size size()  override { return Ssh::Terminal::size(); }
-		bool avail() override { return !Ssh::Terminal::read_buffer_empty(); }
+		bool avail() override { return Ssh::Terminal::read_avail(); }
 
 		void read_avail_sigh(Genode::Signal_context_capability sigh) override {
 			Ssh::Terminal::read_avail_sigh(sigh);

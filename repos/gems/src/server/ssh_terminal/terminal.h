@@ -57,8 +57,11 @@ class Ssh::Terminal
 
 		Ssh::User const _user { };
 
+
+		Genode::Lock _read_lock            { };
 		Genode::Lock _write_lock           { };
-		Util::Buffer<4096u> _read_buf      { };
+
+		Magic_ring_buffer<char> _read_buf  { _env, 16*1024 };
 		Magic_ring_buffer<char> _write_buf { _env, 16*1024 };
 
 		unsigned _attached_channels { 0u };
@@ -113,7 +116,7 @@ class Ssh::Terminal
 			_read_avail_sigh = sigh;
 
 			/* if read data is available right now, deliver signal immediately */
-			if (read_buffer_empty() && _read_avail_sigh.valid()) {
+			if (read_avail() && _read_avail_sigh.valid()) {
 				Signal_transmitter(_read_avail_sigh).submit();
 			}
 		}
@@ -165,28 +168,41 @@ class Ssh::Terminal
 		 */
 		size_t receive_data(char const *src, Genode::size_t src_len)
 		{
-			Lock::Guard    guard     { _read_buf.lock() };
-			size_t         num_bytes { 0 };
+			Lock::Guard g(_read_lock);
+			size_t in_bytes { 0 };
+
+			size_t max_bytes = Genode::min(src_len, _read_buf.write_avail());
+
+			if (!max_bytes) {
+				return max_bytes;
+			}
+
+			char *dst = _read_buf.write_addr();
 
 			if (raw_mode) {
-				num_bytes = _read_buf.append(src, src_len);
-			}else {
-				while ((_read_buf.write_avail() > 0) && (num_bytes < src_len)) {
+				Genode::memcpy(dst, src, max_bytes);
+				_read_buf.fill(max_bytes);
+				in_bytes = max_bytes;
+			} else {
+				while ( in_bytes < max_bytes ) {
 
-					char c = src[num_bytes];
+					char c = src[in_bytes];
 
-					/* replace ^? with ^H and let's hope we do not break anything */
+					/* replace ^? with ^H */
 					enum { DEL = 0x7f, BS = 0x08, };
 					if (c == DEL) {
-						_read_buf.append(BS);
+						dst[in_bytes] = BS;
 					} else {
-						_read_buf.append(c);
+						dst[in_bytes] = c;
 					}
-
-					num_bytes++;
+					in_bytes++;
 				}
+				_read_buf.fill(in_bytes);
 			}
-			return num_bytes;
+
+			notify_read_avail();
+
+			return in_bytes;
 		}
 
 		/**
@@ -230,18 +246,14 @@ class Ssh::Terminal
 		 */
 		size_t read(char *dst, size_t dst_len)
 		{
-			Genode::Lock::Guard g(_read_buf.lock());
-
-			size_t const num_bytes = min(dst_len, _read_buf.read_avail());
-			Genode::memcpy(dst, _read_buf.content(), num_bytes);
-			_read_buf.consume(num_bytes);
+			Genode::Lock::Guard g { _read_lock };
+			const size_t num_bytes { min(dst_len, _read_buf.read_avail()) };
+			Genode::memcpy(dst, _read_buf.read_addr(), num_bytes);
+			_read_buf.drain(num_bytes);
 
 			/* notify client if there are still bytes available for reading */
-			if (!_read_buf.read_avail()) { _read_buf.reset(); }
-			else {
-				if (_read_avail_sigh.valid()) {
-					Signal_transmitter(_read_avail_sigh).submit();
-				}
+			if (_read_buf.read_avail()) {
+				notify_read_avail();
 			}
 
 			return num_bytes;
@@ -289,10 +301,10 @@ class Ssh::Terminal
 		/**
 		 * Return true if the internal read buffer is ready to receive data
 		 */
-		bool read_buffer_empty()
+		bool read_avail()
 		{
-			Genode::Lock::Guard g(_read_buf.lock());
-			return !_read_buf.read_avail();
+			Genode::Lock::Guard g { _read_lock };
+			return _read_buf.read_avail() != 0;
 		}
 
 private:

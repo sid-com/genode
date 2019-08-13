@@ -28,42 +28,10 @@
 namespace Util
 {
 	using Filename = Genode::String<256>;
-
-	template <size_t C>
-	struct Buffer;
-
 	/*
 	 * get the current time from the libc backend.
 	 */
 	char const *get_time();
 }
-
-
-template <size_t C>
-struct Util::Buffer
-{
-	Genode::Lock _lock    { };
-	char         _data[C] { };
-	size_t       _head    { 0 };
-	size_t       _tail    { 0 };
-
-	size_t read_avail()   const { return _head > _tail ? _head - _tail : 0; }
-	size_t write_avail()  const { return _head <= C ? C - _head : 0; }
-	char const *content() const { return &_data[_tail]; }
-
-	void append(char c)    { _data[_head++] = c; }
-	size_t append(char const *src, size_t len) {
-		size_t num_bytes { 0 };
-		while ((write_avail() > 0) && (num_bytes < len)) {
-			append(src[num_bytes]);
-			num_bytes++;
-		}
-		return num_bytes;
-	}
-	void consume(size_t n) { _tail += n; }
-	void reset()           { _head = _tail = 0; }
-
-	Genode::Lock &lock()   { return _lock; }
-};
 
 #endif /* _SSH_TERMINAL_UTIL_H_ */

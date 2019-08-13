@@ -36,7 +36,6 @@ int channel_data_cb(ssh_session session, ssh_channel channel,
                     void *userdata)
 {
 	using Genode::error;
-	using Genode::Lock;
 
 	if (len == 0) {
 		return 0;
@@ -68,10 +67,8 @@ int channel_data_cb(ssh_session session, ssh_channel channel,
 
 	Ssh::Terminal &conn      { *p->terminal };
 	char const    *src       { reinterpret_cast<char const*>(data) };
-	size_t         num_bytes = conn.receive_data(src, len);
 
-	conn.notify_read_avail();
-	return num_bytes;
+	return conn.receive_data(src, len);
 }
 
 
