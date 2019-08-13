@@ -43,6 +43,8 @@ struct Noux::Terminal_io_channel : Io_channel
 
 	Ring_buffer<char, Sysio::CHUNK_SIZE + 1> read_buffer { };
 
+	char ipc_read_buffer[1024u];
+
 	Terminal_io_channel(Terminal::Session &terminal, Type type,
 	                    Entrypoint &ep)
 	:
@@ -73,9 +75,7 @@ struct Noux::Terminal_io_channel : Io_channel
 		size_t const count = min(sysio.write_in.count,
 		                         sizeof(sysio.write_in.chunk));
 
-		_terminal.write(sysio.write_in.chunk, count);
-
-		sysio.write_out.count = count;
+		sysio.write_out.count = _terminal.write(sysio.write_in.chunk, count);
 
 		return true;
 	}
@@ -205,18 +205,23 @@ struct Noux::Terminal_io_channel : Io_channel
 
 	void _handle_read_avail()
 	{
-		while ((read_buffer.avail_capacity() > 0) &&
-		       _terminal.avail()) {
+		if (_terminal.avail()) {
+			const size_t max_count = Genode::min(static_cast<size_t>
+			                               (read_buffer.avail_capacity()),
+			                               sizeof(ipc_read_buffer));
 
-			char c;
-			_terminal.read(&c, 1);
+			const size_t num_bytes = _terminal.read(ipc_read_buffer, max_count);
 
-			enum { INTERRUPT = 3 };
+			for (size_t i = 0; i < num_bytes; ++i) {
+				char c = ipc_read_buffer[i];
 
-			if (c == INTERRUPT) {
-				Io_channel::invoke_all_interrupt_handlers(Sysio::SIG_INT);
-			} else {
-				read_buffer.add(c);
+				enum { INTERRUPT = 3 };
+
+				if (c == INTERRUPT) {
+					Io_channel::invoke_all_interrupt_handlers(Sysio::SIG_INT);
+				} else {
+					read_buffer.add(c);
+				}
 			}
 		}
 
