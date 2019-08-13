@@ -168,39 +168,64 @@ class Ssh::Terminal
 		 */
 		size_t receive_data(char const *src, Genode::size_t src_len)
 		{
-			Lock::Guard g(_read_lock);
 			size_t in_bytes { 0 };
+			size_t write_avail { 0 };
 
-			size_t max_bytes = Genode::min(src_len, _read_buf.write_avail());
+			{
+				Lock::Guard g { _read_lock };
+				const size_t max_bytes { Genode::min(src_len, _read_buf.write_avail()) };
 
-			if (!max_bytes) {
-				return max_bytes;
-			}
-
-			char *dst = _read_buf.write_addr();
-
-			if (raw_mode) {
-				Genode::memcpy(dst, src, max_bytes);
-				_read_buf.fill(max_bytes);
-				in_bytes = max_bytes;
-			} else {
-				while ( in_bytes < max_bytes ) {
-
-					char c = src[in_bytes];
-
-					/* replace ^? with ^H */
-					enum { DEL = 0x7f, BS = 0x08, };
-					if (c == DEL) {
-						dst[in_bytes] = BS;
-					} else {
-						dst[in_bytes] = c;
-					}
-					in_bytes++;
+				if (!max_bytes) {
+					return max_bytes;
 				}
-				_read_buf.fill(in_bytes);
+
+				char *dst = _read_buf.write_addr();
+
+				if (raw_mode) {
+					Genode::memcpy(dst, src, max_bytes);
+					_read_buf.fill(max_bytes);
+					in_bytes = max_bytes;
+				} else {
+					while ( in_bytes < max_bytes ) {
+
+						char c = src[in_bytes];
+
+						/* replace ^? with ^H */
+						enum { DEL = 0x7f, BS = 0x08, };
+						if (c == DEL) {
+							dst[in_bytes] = BS;
+						} else {
+							dst[in_bytes] = c;
+						}
+						in_bytes++;
+					}
+					_read_buf.fill(in_bytes);
+
+					write_avail = _read_buf.write_avail();
+				}
+
+				notify_read_avail();
 			}
 
-			notify_read_avail();
+			if (!write_avail) {
+				/* waiting for terminal session to read some data*/
+				uint8_t timeout = 10u;
+				while (write_avail < 1024) {
+					/* FIXME: At this moment we just filled our buffer from data
+					 * we received over the wire with libssh and we give noux
+					 * time to read (notify noux and let noux pull data via IPC).
+					 */
+					usleep(500000);
+					if (--timeout == 0) {
+						Genode::error("timeout while waiting for read");
+						break;
+					}
+					{
+						Lock::Guard g { _read_lock };
+						write_avail = _read_buf.write_avail();
+					}
+				}
+			}
 
 			return in_bytes;
 		}
