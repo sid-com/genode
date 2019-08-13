@@ -278,6 +278,7 @@ if {[get_cmd_switch --autopilot]} {
 	run_genode_until "--- SSH terminal started ---" 15 $serial_id
 
 	for {set index 0} {$index < 10} {incr index} {
+
 		puts "test interactive channel"
 		spawn sshpass -p xuon ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -l noux $host -p $port
 		set ssh_id $spawn_id
@@ -287,6 +288,7 @@ if {[get_cmd_switch --autopilot]} {
 		send -i $ssh_id "exit\r"
 		run_genode_until "child \"noux\" exited with exit value 0" 15 $serial_id
 
+
 		puts "test exec channel echo"
 		set echo_text "The quick brown fox jumps over the lazy dog"
 		spawn sshpass -p xuon ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -l noux $host -p $port "echo $echo_text"
@@ -295,6 +297,7 @@ if {[get_cmd_switch --autopilot]} {
 		run_genode_until $echo_text 5 $ssh_id
 		run_genode_until "child \"noux\" exited with exit value 0" 15 $serial_id
 
+
 		puts "test exec channel ls"
 		spawn sshpass -p xuon ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -l noux $host -p $port "ls"
 		set ssh_id $spawn_id
@@ -302,11 +305,29 @@ if {[get_cmd_switch --autopilot]} {
 		run_genode_until "bin" 5 $ssh_id
 		run_genode_until "child \"noux\" exited with exit value 0" 15 $serial_id
 
+
 		puts "test exec channel with empty command will not hang"
 		spawn sshpass -p xuon ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -l noux $host -p $port " "
 		set ssh_id $spawn_id
 		run_genode_until "--- noux started ---" 15 $serial_id
 		run_genode_until "child \"noux\" exited with exit value" 15 $serial_id
+
+
+		puts "test pipe into ssh channel"
+		set echo_text "hello"
+		set filename [run_dir]/testfile
+		set fd [open $filename w]
+		puts $fd $echo_text
+		close $fd
+
+		spawn bash -c "cat $filename | sshpass -p xuon ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -l noux $host -p $port 'cat'"
+		set ssh_id $spawn_id
+		run_genode_until "--- noux started ---" 15 $serial_id
+		run_genode_until $echo_text 5 $ssh_id
+		# terminate with ctrl+c because remote cat won't exit
+		send -i $ssh_id "\003"
+		run_genode_until "logout user noux" 15 $serial_id
+		after 2000
 	}
 
 	puts ""
