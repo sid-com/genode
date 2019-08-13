@@ -1,6 +1,7 @@
 /*
  * \brief  Component providing a Terminal session via SSH
  * \author Josef Soentgen
+ * \author Sid Hussmann
  * \author Pirmin Duss
  * \date   2019-05-29
  */
@@ -22,10 +23,13 @@
 #include <session/session.h>
 #include <base/log.h>
 #include <terminal_session/terminal_session.h>
+#include <timer_session/connection.h>
 
 /* local includes */
 #include "login.h"
 
+/* gems includes */
+#include <gems/magic_ring_buffer.h>
 
 namespace Ssh
 {
@@ -46,8 +50,7 @@ class Ssh::Terminal
 
 	private:
 
-		Util::Buffer<4096u> _write_buf { };
-
+		Genode::Env &_env;
 		::Terminal::Session::Size _size { 0, 0 };
 
 		Signal_context_capability _size_changed_sigh;
@@ -55,6 +58,9 @@ class Ssh::Terminal
 		Signal_context_capability _read_avail_sigh;
 
 		Ssh::User const _user { };
+
+		Genode::Lock _write_lock           {};
+		Magic_ring_buffer<char> _write_buf { _env, 16*1024 };
 
 		unsigned _attached_channels { 0u };
 		unsigned _pending_channels  { 0u };
@@ -64,7 +70,7 @@ class Ssh::Terminal
 		/**
 		 * Constructor
 		 */
-		Terminal(Ssh::User const &user) : _user(user) { }
+		Terminal(Ssh::User const &user, Genode::Env &env) : _env(env), _user(user) { }
 
 		virtual ~Terminal() = default;
 
@@ -160,24 +166,27 @@ class Ssh::Terminal
 		 */
 		void send(ssh_channel channel)
 		{
-			Lock::Guard g(_write_buf.lock());
+			Lock::Guard g { _write_lock };
 
 			if (!_write_buf.read_avail()) { return; }
 
 			/* ignore send request */
 			if (!channel || !ssh_channel_is_open(channel)) { return; }
 
-			char const *src     = _write_buf.content();
+			char const *src     = _write_buf.read_addr();
 			size_t const len    = _write_buf.read_avail();
 			/* XXX we do not handle partial writes */
 			int const num_bytes = ssh_channel_write(channel, src, len);
+
+			_write_buf.drain(num_bytes);
 
 			if (num_bytes && (size_t)num_bytes < len) {
 				warning("send on channel was truncated");
 			}
 
 			if (++_pending_channels >= _attached_channels) {
-				_write_buf.reset();
+				/* reset buffer */
+				_write_buf.drain(_write_buf.read_avail());
 			}
 
 			/* at this point the client might have disconnected */
@@ -215,30 +224,38 @@ class Ssh::Terminal
 		 */
 		size_t write(char const *src, Genode::size_t src_len)
 		{
-			Lock::Guard g(_write_buf.lock());
+			Lock::Guard g { _write_lock };
+			size_t in_bytes { 0 };
+			const size_t max_bytes { Genode::min(src_len, _write_buf.write_avail()) };
 
-			size_t num_bytes = 0;
-			Libc::with_libc([&] {
-				if (raw_mode) {
-					num_bytes = _write_buf.append(src, src_len);
-				} else {
-					while (_write_buf.write_avail() > 0 && num_bytes < src_len) {
+			if (!max_bytes) {
+				return 0;
+			}
 
-						char c = src[num_bytes];
-						if (c == '\n') {
-							_write_buf.append('\r');
-						}
+			if (raw_mode) {
+				char *dst = _write_buf.write_addr();
+				Genode::memcpy(dst, src, max_bytes);
+				_write_buf.fill(max_bytes);
+				in_bytes = max_bytes;
+			} else {
+				size_t out_bytes = 0;
+				while ( out_bytes < max_bytes ) {
 
-						_write_buf.append(c);
-						num_bytes++;
+					char c = src[in_bytes];
+					if (c == '\n') {
+						_write_buf.write_addr()[out_bytes] = '\r';
+						out_bytes++;
 					}
-				}
-				/* wake the event loop up */
-				char c = 1;
-				::write(write_avail_fd, &c, sizeof(c));
-			});
 
-			return num_bytes;
+					_write_buf.write_addr()[out_bytes] = c;
+					out_bytes++;
+					in_bytes++;
+				}
+				_write_buf.fill(out_bytes);
+			}
+			_wake_loop();
+
+			return in_bytes;
 		}
 
 		/**
@@ -248,6 +265,18 @@ class Ssh::Terminal
 		{
 			Genode::Lock::Guard g(read_buf.lock());
 			return !read_buf.read_avail();
+		}
+
+private:
+		void _wake_loop()
+		{
+			Libc::with_libc([&] {
+				/* wake the event loop up */
+				char c = 1;
+				::write(write_avail_fd, &c, sizeof(c));
+			});
+			Timer::Connection timer {_env};
+			timer.msleep(1);
 		}
 };
 

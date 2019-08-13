@@ -2,6 +2,7 @@
  * \brief  Component providing a Terminal session via SSH
  * \author Josef Soentgen
  * \author Pirmin Duss
+ * \author Sid Hussmann
  * \date   2019-05-29
  */
 
@@ -34,6 +35,7 @@ class Terminal::Session_component : public Genode::Rpc_object<Session, Session_c
 {
 	private:
 
+		Genode::Env                   &_env;
 		Genode::Attached_ram_dataspace _io_buffer;
 
 	public:
@@ -42,7 +44,8 @@ class Terminal::Session_component : public Genode::Rpc_object<Session, Session_c
 		                  Genode::size_t io_buffer_size,
 		                  Ssh::User const &user)
 		:
-			Ssh::Terminal(user),
+			Ssh::Terminal(user, env),
+			_env(env),
 			_io_buffer(env.ram(), env.rm(), io_buffer_size)
 		{ }
 
