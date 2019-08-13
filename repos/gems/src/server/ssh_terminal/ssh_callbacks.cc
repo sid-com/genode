@@ -67,28 +67,9 @@ int channel_data_cb(ssh_session session, ssh_channel channel,
 	}
 
 	Ssh::Terminal &conn      { *p->terminal };
-	Lock::Guard    guard     { conn.read_buf.lock() };
 	char const    *src       { reinterpret_cast<char const*>(data) };
-	size_t         num_bytes { 0 };
+	size_t         num_bytes = conn.receive_data(src, len);
 
-	if (p->is_exec_request) {
-		num_bytes = conn.read_buf.append(src, len);
-	} else {
-		while ((conn.read_buf.write_avail() > 0) && (num_bytes < len)) {
-
-			char c = src[num_bytes];
-
-			/* replace ^? with ^H and let's hope we do not break anything */
-			enum { DEL = 0x7f, BS = 0x08, };
-			if (c == DEL) {
-				conn.read_buf.append(BS);
-			} else {
-				conn.read_buf.append(c);
-			}
-
-			num_bytes++;
-		}
-	}
 	conn.notify_read_avail();
 	return num_bytes;
 }
