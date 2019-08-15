@@ -19,6 +19,7 @@
 #include <session/session.h>
 #include <base/rpc.h>
 #include <base/stdint.h>
+#include <base/signal.h>
 
 namespace Rtc {
 	struct Timestamp;
