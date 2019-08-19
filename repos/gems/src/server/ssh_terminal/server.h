@@ -48,7 +48,7 @@ namespace Ssh {
 /**
  * forward declaration of the write available callback.
  */
-static int write_avail_cb(socket_t fd, int revents, void *userdata);
+int write_avail_cb(socket_t fd, int revents, void *userdata);
 
 
 struct Ssh::Session : Genode::Registry<Session>::Element
@@ -273,9 +273,9 @@ class Ssh::Server
 		/**
 		 * Handle public-key authentication
 		 */
-		bool auth_pubkey(ssh_session s, char const *u,
-		                 struct ssh_key_struct *pubkey,
-                         char signature_state);
+		int auth_pubkey(ssh_session s, char const *u,
+		                struct ssh_key_struct *pubkey,
+		                char signature_state);
 };
 
 #endif /* _SSH_TERMINAL_SERVER_H_ */

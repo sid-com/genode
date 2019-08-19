@@ -509,9 +509,9 @@ bool Ssh::Server::auth_password(ssh_session s, char const *u, char const *pass)
 }
 
 
-bool Ssh::Server::auth_pubkey(ssh_session s, char const *u,
-                              struct ssh_key_struct *pubkey,
-                              char signature_state)
+int Ssh::Server::auth_pubkey(ssh_session s, char const *u,
+                             struct ssh_key_struct *pubkey,
+                             char signature_state)
 {
 	Session *p = lookup_session(s);
 	if (!p || p->session != s) {
@@ -595,7 +595,7 @@ void Ssh::Server::_wake_loop()
 }
 
 
-static int write_avail_cb(socket_t fd, int revents, void *userdata)
+int write_avail_cb(socket_t fd, int revents, void *userdata)
 {
 	int n = 0;
 	Libc::with_libc([&] {
