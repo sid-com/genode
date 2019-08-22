@@ -155,7 +155,7 @@ proc run_boot_dir {binaries} {
 
 	run_image [run_dir]/boot/image.elf
 
-	# set symbolic link to image.elf file in TFTP directory for PXE boot
+	# copy boot image into TFTP directory for PXE boot
 	if {[expr [have_spec arm] || [have_spec arm_64]] && [have_include "load/tftp"]} {
 		exec cp [run_dir]/boot/image.elf [load_tftp_base_dir][load_tftp_offset_dir]
 
