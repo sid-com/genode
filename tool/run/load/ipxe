@@ -45,7 +45,8 @@ proc create_symlink_for_iso { } {
 # Update iPXE boot directory to point to current run directory.
 #
 proc update_ipxe_boot_dir { } {
-	exec ln -sfn [pwd]/[run_dir] [load_ipxe_base_dir]/[load_ipxe_boot_dir]
+	exec rm -rf [load_ipxe_base_dir]/[load_ipxe_boot_dir]
+	exec cp -rL [pwd]/[run_dir] [load_ipxe_base_dir]/[load_ipxe_boot_dir]
 }
 
 ##
