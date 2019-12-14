@@ -1,0 +1,76 @@
+<runtime ram="32M" caps="1000" binary="init">
+
+	<events>
+		<timeout meaning="failed" sec="30" />
+		<log meaning="succeeded">child "source" exited with exit value 0</log>
+		<log meaning="failed">Error: </log>
+	</events>
+
+	<content>
+		<rom label="ld.lib.so"/>
+		<rom label="libc.lib.so"/>
+		<rom label="libm.lib.so"/>
+		<rom label="posix.lib.so"/>
+		<rom label="test-libc_named_pipe_source"/>
+		<rom label="test-libc_named_pipe_sink"/>
+		<rom label="vfs"/>
+		<rom label="vfs.lib.so"/>
+		<rom label="vfs_named_pipe.lib.so"/>
+	</content>
+
+	<config>
+		<parent-provides>
+			<service name="ROM"/>
+			<service name="PD"/>
+			<service name="RM"/>
+			<service name="CPU"/>
+			<service name="LOG"/>
+			<service name="Timer"/>
+		</parent-provides>
+		<default-route>
+			<any-service> <parent/> <any-child/> </any-service>
+		</default-route>
+		<default caps="256"/>
+		<start name="vfs">
+			<provides> <service name="File_system"/> </provides>
+			<resource name="RAM" quantum="4M"/>
+			<config>
+				<vfs>
+					<dir name="upstream">
+						<named_pipe/>
+					</dir>
+					<dir name="downstream">
+						<named_pipe/>
+					</dir>
+				</vfs>
+				<default-policy root="/" writeable="yes"/>
+			</config>
+		</start>
+		<start name="source">
+			<binary name="test-libc_named_pipe_source"/>
+			<resource name="RAM" quantum="4M"/>
+			<config>
+				<vfs>
+					<dir name="dev">
+						<dir name="pipe"> <fs/> </dir>
+						<log/>
+					</dir>
+				</vfs>
+				<libc stdout="/dev/log"/>
+			</config>
+		</start>
+		<start name="sink">
+			<binary name="test-libc_named_pipe_sink"/>
+			<resource name="RAM" quantum="4M"/>
+			<config>
+				<vfs>
+					<dir name="dev">
+						<dir name="pipe"> <fs/> </dir>
+						<log/>
+					</dir>
+				</vfs>
+				<libc stdin="/dev/pipe/upstream/out" stdout="/dev/pipe/downstream/in" stderr="/dev/log"/>
+			</config>
+		</start>
+	</config>
+</runtime>

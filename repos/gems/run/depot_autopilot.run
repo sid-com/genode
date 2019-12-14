@@ -676,6 +676,7 @@ set default_test_pkgs {
 	test-libc_connect_vfs_server_lxip
 	test-libc_counter
 	test-libc_getenv
+	test-libc_named_pipe
 	test-libc_pipe
 	test-libc_vfs
 	test-libc_vfs_audit
