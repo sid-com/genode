@@ -1,0 +1,47 @@
+The VFS named_pipe plugin exposes a control file for creating named pipes. The
+goal is to be able to transfer data via file handles from one component to
+another. E.g. you can attach stdin of a libc component to a named pipe and write
+data using standard fwrite() calls.
+
+Here a sample scenario where stdin of a component is attached to a named pipe:
+
+```
+<start name="vfs">
+	<provides> <service name="File_system"/> </provides>
+	<resource name="RAM" quantum="4M"/>
+	<config>
+		<vfs>
+			<dir name="upstream">
+				<named_pipe/>
+			</dir>
+		</vfs>
+		<default-policy root="/" writeable="yes"/>
+	</config>
+</start>
+
+<start name="my-libc-app">
+	<resource name="RAM" quantum="4M"/>
+	<config>
+		<vfs>
+			<dir name="dev">
+				<dir name="pipe"> <fs/> </dir>
+				<log/>
+			</dir>
+		</vfs>
+		<libc stdin="/dev/pipe/upstream/out" stdout="/dev/log" stderr="/dev/log"/>
+	</config>
+</start>
+```
+
+The directory named `upstream` represents a pipe and contains an `in` and `out`
+file for writing and reading respectively to the pipe.
+
+A remote component can now write to `/dev/pipe/upstream/in` so the data written
+is then accessible on stdin within "my-libc-app". Once the remote component
+closes the `/dev/pipe/upstream/in` file, an EOF is received on stdin of
+"my-libc-app".
+
+Reads and writes are non-blocking and will complete short operations without
+error, with the exception of reads on an empty pipe, which return READ_QUEUED.
+The read and write capacity of a pipe may be queried by stat'ing the size of
+`out` and `in` files.

@@ -1,0 +1,7 @@
+_/src/init
+_/src/test-libc_named_pipe_sink
+_/src/test-libc_named_pipe_source
+_/src/libc
+_/src/vfs
+_/src/vfs_named_pipe
+_/src/posix
