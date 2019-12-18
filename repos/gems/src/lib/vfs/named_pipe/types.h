@@ -6,12 +6,14 @@
 
 /*
  * Copyright (C) 2019 gapfruit AG
+ * Copyright (C) 2019 Genode Labs GmbH
  *
  * This file is part of the Genode OS framework, which is distributed
  * under the terms of the GNU Affero General Public License version 3.
  */
 
-#pragma once
+#ifndef _VFS_NAMED_PIPE_TYPES_H_
+#define _VFS_NAMED_PIPE_TYPES_H_
 
 #include <os/path.h>
 #include <os/ring_buffer.h>
@@ -36,3 +38,5 @@ namespace Vfs_named_pipe {
 	enum { PIPE_BUF_SIZE = 8192U };
 	typedef Genode::Ring_buffer<unsigned char, PIPE_BUF_SIZE+1> Pipe_buffer;
 }
+
+#endif /* _VFS_NAMED_PIPE_TYPES_H_ */

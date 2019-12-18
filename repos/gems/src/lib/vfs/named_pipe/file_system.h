@@ -6,12 +6,16 @@
 
 /*
  * Copyright (C) 2019 gapfruit AG
+ * Copyright (C) 2019 Genode Labs GmbH
  *
  * This file is part of the Genode OS framework, which is distributed
  * under the terms of the GNU Affero General Public License version 3.
  */
 
-#pragma once
+#ifndef _VFS_NAMED_PIPE_FILE_SYSTEM_H_
+#define _VFS_NAMED_PIPE_FILE_SYSTEM_H_
+
+#include <base/registry.h>
 
 #include "pipe_handle.h"
 #include "types.h"
@@ -48,12 +52,29 @@ class Vfs_named_pipe::File_system : public Vfs::File_system
 				elem.object().read_ready_response(); });
 		}
 
+		typedef Genode::Registered<Vfs_watch_handle>      Registered_watch_handle;
+		typedef Genode::Registry<Registered_watch_handle> Watch_handle_registry;
+
+
+		Watch_handle_registry _handle_registry { };
+
+		Genode::Io_signal_handler<Vfs_named_pipe::File_system> _set_signal_handler;
+
+		void _handle_set_signal()
+		{
+			_handle_registry.for_each([this] (Registered_watch_handle &handle) {
+				handle.watch_response();
+			});
+		}
 
 
 	public:
 
 		File_system(Vfs::Env &env)
-		: _notify_handler(env.env().ep(), *this, &File_system::_notify_any) { }
+		:
+			_notify_handler(env.env().ep(), *this, &File_system::_notify_any),
+			_set_signal_handler(env.env().ep(), *this,
+			                    &Vfs_named_pipe::File_system::_handle_set_signal) { }
 
 		const char* type() override { return "named_pipe"; }
 
@@ -136,6 +157,9 @@ class Vfs_named_pipe::File_system : public Vfs::File_system
 			if (notify)
 				submit_signal();
 
+			/* inform watchers */
+			_handle_set_signal();
+
 			return Write_result::WRITE_OK;
 		}
 
@@ -169,8 +193,8 @@ class Vfs_named_pipe::File_system : public Vfs::File_system
 		}
 
 		Opendir_result opendir(char const *cpath, bool create,
-	                           Vfs_handle **handle,
-	                           Allocator &alloc) override
+		                       Vfs_handle **handle,
+		                       Allocator &alloc) override
 		{
 			/* open dummy handles on directories */
 
@@ -199,6 +223,12 @@ class Vfs_named_pipe::File_system : public Vfs::File_system
 			}
 
 			destroy(vfs_handle->alloc(), vfs_handle);
+		}
+
+		void close(Vfs_watch_handle *handle) override
+		{
+			if (handle && (&handle->fs() == this))
+				destroy(handle->alloc(), handle);
 		}
 
 		Stat_result stat(const char *cpath, Stat &out) override
@@ -232,6 +262,25 @@ class Vfs_named_pipe::File_system : public Vfs::File_system
 			}
 
 			return result;
+		}
+
+		Watch_result watch(char const      *path,
+		                   Vfs_watch_handle **handle,
+		                   Allocator        &alloc) override
+		{
+			Path filename(path);
+			if (filename != "/out") {
+				return WATCH_ERR_UNACCESSIBLE;
+			}
+			try {
+				Vfs_watch_handle &watch_handle = *new (alloc)
+					Registered_watch_handle(_handle_registry, *this, alloc);
+
+				*handle = &watch_handle;
+				return WATCH_OK;
+			}
+			catch (Genode::Out_of_ram)  { return WATCH_ERR_OUT_OF_RAM;  }
+			catch (Genode::Out_of_caps) { return WATCH_ERR_OUT_OF_CAPS; }
 		}
 
 		Unlink_result unlink(const char*) override {
@@ -299,3 +348,5 @@ class Vfs_named_pipe::File_system : public Vfs::File_system
 			return SYNC_OK; }
 };
 
+
+#endif /* _VFS_NAMED_PIPE_FILE_SYSTEM_H_ */

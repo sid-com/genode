@@ -2,7 +2,7 @@
 
 	<events>
 		<timeout meaning="failed" sec="30" />
-		<log meaning="succeeded">child "source" exited with exit value 0</log>
+		<log meaning="succeeded">--- test succeeded ---</log>
 		<log meaning="failed">Error: </log>
 	</events>
 
@@ -11,6 +11,7 @@
 		<rom label="libc.lib.so"/>
 		<rom label="libm.lib.so"/>
 		<rom label="posix.lib.so"/>
+		<rom label="stdcxx.lib.so"/>
 		<rom label="test-libc_named_pipe_source"/>
 		<rom label="test-libc_named_pipe_sink"/>
 		<rom label="vfs"/>

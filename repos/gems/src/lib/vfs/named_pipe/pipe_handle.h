@@ -6,12 +6,14 @@
 
 /*
  * Copyright (C) 2019 gapfruit AG
+ * Copyright (C) 2019 Genode Labs GmbH
  *
  * This file is part of the Genode OS framework, which is distributed
  * under the terms of the GNU Affero General Public License version 3.
  */
 
-#pragma once
+#ifndef _VFS_NAMED_PIPE_PIPE_HANDLE_H_
+#define _VFS_NAMED_PIPE_PIPE_HANDLE_H_
 
 #include <vfs/file_system_factory.h>
 #include "types.h"
@@ -57,3 +59,5 @@ struct Vfs_named_pipe::Pipe_handle : Vfs::Vfs_handle
 	bool read_ready() const;
 	bool notify_read_ready();
 };
+
+#endif /* _VFS_NAMED_PIPE_PIPE_HANDLE_H_ */

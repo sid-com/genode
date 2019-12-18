@@ -1,5 +1,10 @@
 TARGET = test-libc_named_pipe_source
-LIBS   = base posix
-SRC_CC = main.cc
+
+LIBS := base
+LIBS += libc
+LIBS += stdcxx
+LIBS += vfs
+
+SRC_CC := main.cc
 
 CC_CXX_WARN_STRICT =
