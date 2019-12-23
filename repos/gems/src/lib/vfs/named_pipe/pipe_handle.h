@@ -1,52 +1,49 @@
 /*
- * \brief  VFS named pipe plugin
+ * \brief  VFS pipe handle for pipe plugin
+ * \author Emery Hemingway
  * \author Sid Hussmann
- * \date   2019-12-13
+ * \date   2019-05-29
  */
 
 /*
- * Copyright (C) 2019 gapfruit AG
  * Copyright (C) 2019 Genode Labs GmbH
+ * Copyright (C) 2019 gapfruit AG
  *
  * This file is part of the Genode OS framework, which is distributed
  * under the terms of the GNU Affero General Public License version 3.
  */
 
-#ifndef _VFS_NAMED_PIPE_PIPE_HANDLE_H_
-#define _VFS_NAMED_PIPE_PIPE_HANDLE_H_
+#ifndef _VFS_PIPE_PIPE_HANDLE_H_
+#define _VFS_PIPE_PIPE_HANDLE_H_
 
-#include <vfs/file_system_factory.h>
 #include "types.h"
 
-namespace Vfs_named_pipe {
+namespace Vfs_pipe {
 	using namespace Vfs;
 
+	class Pipe;
 	struct Pipe_handle;
-	class File_system;
+	struct New_pipe_handle;
 }
 
 
-struct Vfs_named_pipe::Pipe_handle : Vfs::Vfs_handle
+struct Vfs_pipe::Pipe_handle : Vfs::Vfs_handle, private Pipe_handle_registry_element
 {
+	Pipe &pipe;
 
 	Handle_element io_progress_elem { *this };
 	Handle_element  read_ready_elem { *this };
 
 	bool const writer;
 
-	Vfs_named_pipe::File_system& _file_system;
-
-	Pipe_handle(Vfs_named_pipe::File_system &fs,
+	Pipe_handle(Vfs::File_system &fs,
 	            Genode::Allocator &alloc,
-	            unsigned flags)
-	:
-		Vfs::Vfs_handle(reinterpret_cast<Vfs::File_system&>(fs),
-		                reinterpret_cast<Vfs::File_system&>(fs), alloc, flags),
-		writer(flags == Directory_service::OPEN_MODE_WRONLY),
-		_file_system(fs)
-	{ }
+	            unsigned flags,
+	            Pipe_handle_registry &registry,
+	            Vfs_pipe::Pipe& p);
 
-	virtual ~Pipe_handle() = default;
+
+	~Pipe_handle();
 
 	Write_result write(const char *buf,
 	                   file_size count,
@@ -60,4 +57,23 @@ struct Vfs_named_pipe::Pipe_handle : Vfs::Vfs_handle
 	bool notify_read_ready();
 };
 
-#endif /* _VFS_NAMED_PIPE_PIPE_HANDLE_H_ */
+
+struct Vfs_pipe::New_pipe_handle : Vfs::Vfs_handle
+{
+	Pipe &pipe;
+
+	New_pipe_handle(Vfs::File_system &fs,
+	                Genode::Allocator &alloc,
+	                unsigned flags,
+	                Pipe_space &pipe_space,
+	                Genode::Signal_context_capability &notify_sigh,
+	                Genode::Signal_context_capability &watch_sigh);
+
+	~New_pipe_handle();
+
+	Read_result read(char *buf,
+	                 file_size count,
+	                 file_size &out_count);
+};
+
+#endif /* _VFS_PIPE_PIPE_HANDLE_H_ */

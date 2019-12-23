@@ -32,7 +32,9 @@ int main()
 
 	while (true) {
 
+		Genode::log("Named_pipe_sink::Main::", __func__, "() before fread");
 		auto const num_read = fread(buf + total_read, 1, sizeof(buf) - total_read, stdin);
+		Genode::log("Named_pipe_sink::Main::", __func__, "() after fread num_read=", num_read);
 		total_read += num_read;
 		if (num_read == 0 && feof(stdin)) {
 			Genode::log("EOF after reading ", total_read, " bytes");
@@ -50,7 +52,10 @@ int main()
 	size_t total_written = 0;
 
 	while (remain > 0) {
+		Genode::log("Named_pipe_sink::Main::", __func__, "() before fwrite");
 		auto const num_written = fwrite(buf + total_written, 1, remain, stdout);
+		Genode::log("Named_pipe_sink::Main::", __func__, "() after fwrite num_written=", num_written);
+
 		if (num_written < 1 || num_written > remain) {
 			int res = errno;
 			Genode::error((char const *)strerror(res));
@@ -63,7 +68,9 @@ int main()
 	}
 
 	/* send EOF */
+	Genode::log("Named_pipe_sink::Main::", __func__, "() before fclose");
 	fclose(stdout);
+	Genode::log("Named_pipe_sink::Main::", __func__, "() after fclose");
 
 	Genode::log("piped ", total, " bytes");
 	return 0;

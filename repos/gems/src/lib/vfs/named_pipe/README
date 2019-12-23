@@ -1,7 +1,6 @@
-The VFS named_pipe plugin exposes a control file for creating named pipes. The
-goal is to be able to transfer data via file handles from one component to
-another. E.g. you can attach stdin of a libc component to a named pipe and write
-data using standard fwrite() calls.
+The VFS named_pipe plugin enables data transfer via file handles from one
+component to another. E.g. you can attach stdin of a libc component to a named
+pipe and write data using standard fwrite() calls.
 
 Here a sample scenario where stdin of a component is attached to a named pipe:
 
