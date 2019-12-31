@@ -10,13 +10,13 @@
 		<rom label="ld.lib.so"/>
 		<rom label="libc.lib.so"/>
 		<rom label="libm.lib.so"/>
+		<rom label="pipe"/>
 		<rom label="posix.lib.so"/>
 		<rom label="stdcxx.lib.so"/>
 		<rom label="test-libc_named_pipe_source"/>
-		<rom label="test-libc_named_pipe_sink"/>
 		<rom label="vfs"/>
 		<rom label="vfs.lib.so"/>
-		<rom label="vfs_named_pipe.lib.so"/>
+		<rom label="vfs_pipe.lib.so"/>
 	</content>
 
 	<config>
@@ -38,10 +38,10 @@
 			<config>
 				<vfs>
 					<dir name="upstream">
-						<named_pipe/>
+						<pipe><fifo/></pipe>
 					</dir>
 					<dir name="downstream">
-						<named_pipe/>
+						<pipe><fifo/></pipe>
 					</dir>
 				</vfs>
 				<default-policy root="/" writeable="yes"/>
@@ -61,7 +61,7 @@
 			</config>
 		</start>
 		<start name="sink">
-			<binary name="test-libc_named_pipe_sink"/>
+			<binary name="pipe"/>
 			<resource name="RAM" quantum="4M"/>
 			<config>
 				<vfs>

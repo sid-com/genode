@@ -55,5 +55,7 @@ int main()
 	}
 
 	Genode::log("piped ", total, " bytes");
+	/* send EOF */
+	fclose(stdout);
 	return 0;
 };

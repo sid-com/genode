@@ -16,70 +16,35 @@
 #include "file_system.h"
 #include "pipe_handle.h"
 
+
 Vfs_pipe::File_system::File_system(Vfs::Env &env)
 :
-	_set_signal_handler(env.env().ep(), *this,
-	                    &Vfs_pipe::File_system::_inform_watchers),
-	_notify_handler(env.env().ep(), *this, &File_system::_notify_any) { }
-Genode::Dataspace_capability Vfs_pipe::File_system::dataspace(char const*) {
-	return Genode::Dataspace_capability(); }
+	_notify_handler(env.env().ep(), *this, &File_system::_notify_any),
+	_watch_signal_handler(env.env().ep(), *this,
+	                    &Vfs_pipe::File_system::_inform_watchers) { }
 
-void Vfs_pipe::File_system::release(char const*, Dataspace_capability) { }
 
-Vfs_pipe::Unlink_result Vfs_pipe::File_system::unlink(const char*) {
-	return UNLINK_ERR_NO_ENTRY; }
-
-Vfs_pipe::Rename_result Vfs_pipe::File_system::rename(const char*, const char*) {
-	return RENAME_ERR_NO_ENTRY; }
-
-Vfs::file_size Vfs_pipe::File_system::num_dirent(char const *) {
-	return 0; }
-
-/**********************
- ** File I/O service **
- **********************/
-
-Vfs_pipe::Write_result Vfs_pipe::File_system::write(Vfs_handle *vfs_handle,
-                                                    const char *src,
-                                                    file_size count,
-                                                    file_size &out_count)
-{
-	if (Pipe_handle *handle = dynamic_cast<Pipe_handle*>(vfs_handle)) {
-		Write_result res = handle->write(src, count, out_count);
-
-		_inform_watchers();
-
-		return res;
-	}
-
-	return WRITE_ERR_INVALID;
-}
-
-bool Vfs_pipe::File_system::read_ready(Vfs_handle *vfs_handle)
-{
-	if (Pipe_handle *handle = dynamic_cast<Pipe_handle*>(vfs_handle))
-		return handle->read_ready();
-	return true;
-}
-
-bool Vfs_pipe::File_system::notify_read_ready(Vfs_handle *vfs_handle)
-{
-	if (Pipe_handle *handle = dynamic_cast<Pipe_handle*>(vfs_handle))
-		return handle->notify_read_ready();
-	return false;
-}
-
-Vfs_pipe::Ftruncate_result Vfs_pipe::File_system::ftruncate(Vfs_handle*, file_size) {
-	return FTRUNCATE_ERR_NO_PERM; }
-
-Vfs_pipe::Sync_result Vfs_pipe::File_system::complete_sync(Vfs_handle*) {
-	return SYNC_OK; }
-	
 void Vfs_pipe::File_system::_notify_any()
 {
 	_pipe_space.for_each<Pipe&>([] (Pipe &pipe) {
 		pipe.notify(); });
 }
+
+void Vfs_pipe::File_system::_inform_watchers()
+{
+	_watch_handle_registry.for_each([this] (Registered_watch_handle &handle) {
+		handle.watch_response();
+	});
+}
+
+/***********************
+ ** Directory service **
+ ***********************/
+
+Genode::Dataspace_capability Vfs_pipe::File_system::dataspace(char const*) {
+	return Genode::Dataspace_capability(); }
+
+void Vfs_pipe::File_system::release(char const*, Dataspace_capability) { }
 
 Vfs_pipe::Open_result Vfs_pipe::File_system::open(const char *cpath,
                                                   unsigned mode,
@@ -89,10 +54,12 @@ Vfs_pipe::Open_result Vfs_pipe::File_system::open(const char *cpath,
 	Path path(cpath);
 
 	if (path == "/new") {
-		if ((Directory_service::OPEN_MODE_ACCMODE & mode) == Directory_service::OPEN_MODE_WRONLY)
+		if ((Directory_service::OPEN_MODE_ACCMODE & mode)
+			== Directory_service::OPEN_MODE_WRONLY) {
 			return Open_result::OPEN_ERR_NO_PERM;
+		}
 		*handle = new (alloc)
-			New_pipe_handle(*this, alloc, mode, _pipe_space, _notify_cap);
+			New_pipe_handle(*this, alloc, mode, _pipe_space, _notify_cap, _watch_cap);
 		return Open_result::OPEN_OK;
 	}
 
@@ -123,7 +90,6 @@ Vfs_pipe::Opendir_result Vfs_pipe::File_system::opendir(char const *cpath,
                                                         Allocator &alloc)
 {
 	/* open dummy handles on directories */
-
 	if (create) return OPENDIR_ERR_PERMISSION_DENIED;
 	Path path(cpath);
 
@@ -146,7 +112,6 @@ Vfs_pipe::Opendir_result Vfs_pipe::File_system::opendir(char const *cpath,
 		}
 		catch (Pipe_space::Unknown_id) { }
 	}
-
 	return result;
 }
 
@@ -241,9 +206,17 @@ Vfs_pipe::Stat_result Vfs_pipe::File_system::stat(const char *cpath, Stat &out)
 		}
 		catch (Pipe_space::Unknown_id) { }
 	}
-
 	return result;
 }
+
+Vfs_pipe::Unlink_result Vfs_pipe::File_system::unlink(const char*) {
+	return UNLINK_ERR_NO_ENTRY; }
+
+Vfs_pipe::Rename_result Vfs_pipe::File_system::rename(const char*, const char*) {
+	return RENAME_ERR_NO_ENTRY; }
+
+Vfs::file_size Vfs_pipe::File_system::num_dirent(char const *) {
+	return 0; }
 
 bool Vfs_pipe::File_system::directory(char const *cpath)
 {
@@ -299,6 +272,47 @@ const char* Vfs_pipe::File_system::leaf_path(const char *cpath)
 	return result;
 }
 
+void Vfs_pipe::File_system::close(Vfs_watch_handle *handle)
+{
+	if (handle && (&handle->fs() == this))
+		destroy(handle->alloc(), handle);
+}
+
+Vfs_pipe::Watch_result Vfs_pipe::File_system::watch(char const *path,
+                                                    Vfs_watch_handle **handle,
+                                                    Allocator        &alloc)
+{
+	Path filename(path);
+	if (filename != "/out") {
+		return WATCH_ERR_UNACCESSIBLE;
+	}
+	try {
+		Vfs_watch_handle &watch_handle = *new (alloc)
+			Registered_watch_handle(_watch_handle_registry, *this, alloc);
+
+		*handle = &watch_handle;
+		return WATCH_OK;
+	}
+	catch (Genode::Out_of_ram)  { return WATCH_ERR_OUT_OF_RAM;  }
+	catch (Genode::Out_of_caps) { return WATCH_ERR_OUT_OF_CAPS; }
+}
+
+/**********************
+ ** File I/O service **
+ **********************/
+
+Vfs_pipe::Write_result Vfs_pipe::File_system::write(Vfs_handle *vfs_handle,
+                                                    const char *src,
+                                                    file_size count,
+                                                    file_size &out_count)
+{
+	if (Pipe_handle *handle = dynamic_cast<Pipe_handle*>(vfs_handle)) {
+		return handle->write(src, count, out_count);
+	}
+
+	return WRITE_ERR_INVALID;
+}
+
 Vfs_pipe::Read_result Vfs_pipe::File_system::complete_read(Vfs_handle *vfs_handle,
                                                            char *dst,
                                                            file_size count,
@@ -313,34 +327,96 @@ Vfs_pipe::Read_result Vfs_pipe::File_system::complete_read(Vfs_handle *vfs_handl
 	return READ_ERR_INVALID;
 }
 
-void Vfs_pipe::File_system::_inform_watchers()
+bool Vfs_pipe::File_system::read_ready(Vfs_handle *vfs_handle)
 {
-	_handle_registry.for_each([this] (Registered_watch_handle &handle) {
-		handle.watch_response();
-	});
+	if (Pipe_handle *handle = dynamic_cast<Pipe_handle*>(vfs_handle))
+		return handle->read_ready();
+	return true;
 }
 
-void Vfs_pipe::File_system::close(Vfs_watch_handle *handle)
+bool Vfs_pipe::File_system::notify_read_ready(Vfs_handle *vfs_handle)
 {
-	if (handle && (&handle->fs() == this))
-		destroy(handle->alloc(), handle);
+	if (Pipe_handle *handle = dynamic_cast<Pipe_handle*>(vfs_handle))
+		return handle->notify_read_ready();
+	return false;
 }
 
-Vfs_pipe::Watch_result Vfs_pipe::File_system::watch(char const *path,
-                                                                Vfs_watch_handle **handle,
-                                                                Allocator        &alloc)
-{
-	Path filename(path);
-	if (filename != "/out") {
-		return WATCH_ERR_UNACCESSIBLE;
-	}
-	try {
-		Vfs_watch_handle &watch_handle = *new (alloc)
-			Registered_watch_handle(_handle_registry, *this, alloc);
+Vfs_pipe::Ftruncate_result Vfs_pipe::File_system::ftruncate(Vfs_handle*, file_size) {
+	return FTRUNCATE_ERR_NO_PERM; }
 
-		*handle = &watch_handle;
-		return WATCH_OK;
+Vfs_pipe::Sync_result Vfs_pipe::File_system::complete_sync(Vfs_handle*) {
+	return SYNC_OK; }
+
+
+Vfs_pipe::Fifo_file_system::Fifo_file_system(Vfs::Env& env)
+:
+	File_system(env),
+	_pipe(env.alloc(), _pipe_space, _notify_cap, _watch_cap)
+{
+}
+
+
+Vfs_pipe::Fifo_file_system::~Fifo_file_system()
+{
+	_pipe.cleanup();
+}
+
+
+Vfs_pipe::Open_result Vfs_pipe::Fifo_file_system::open(const char *cpath,
+                                                       unsigned,
+                                                       Vfs::Vfs_handle **handle,
+                                                       Genode::Allocator &alloc)
+{
+	Path filename(cpath);
+	return _pipe.open(*this, filename, handle, alloc);
+}
+
+void Vfs_pipe::Fifo_file_system::close(Vfs::Vfs_handle* vfs_handle)
+{
+	_pipe.cleanup();
+	File_system::close(vfs_handle);
+}
+
+
+Vfs_pipe::Stat_result Vfs_pipe::Fifo_file_system::stat(const char* cpath, Stat& out)
+{
+	Stat_result result { STAT_ERR_NO_ENTRY };
+	Path filename(cpath);
+
+	out = Stat { };
+
+	if (filename == "/in") {
+		out = Stat {
+			.size              = file_size(_pipe.buffer_avail_capacity()),
+			.type              = Node_type::CONTINUOUS_FILE,
+			.rwx               = Node_rwx::wo(),
+			.inode             = Genode::addr_t(this) + 1,
+			.device            = Genode::addr_t(this),
+			.modification_time = { }
+		};
+		result = STAT_OK;
+	} else
+	if (filename == "/out") {
+		out = Stat {
+			.size              = file_size(PIPE_BUF_SIZE - _pipe.buffer_avail_capacity()),
+			.type              = Node_type::CONTINUOUS_FILE,
+			.rwx               = Node_rwx::ro(),
+			.inode             = Genode::addr_t(this) + 2,
+			.device            = Genode::addr_t(this),
+			.modification_time = { }
+		};
+		result = STAT_OK;
 	}
-	catch (Genode::Out_of_ram)  { return WATCH_ERR_OUT_OF_RAM;  }
-	catch (Genode::Out_of_caps) { return WATCH_ERR_OUT_OF_CAPS; }
+	return result;
+}
+
+
+const char* Vfs_pipe::Fifo_file_system::leaf_path(const char* cpath)
+{
+	Path path(cpath);
+	if (path == "/") return cpath;
+	if (path == "/in") return cpath;
+	if (path == "/out") return cpath;
+
+	return nullptr;
 }

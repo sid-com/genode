@@ -30,23 +30,29 @@ class Vfs_pipe::Pipe
 private:
 	Genode::Allocator &_alloc;
 	Pipe_space::Element _space_elem;
+	Pipe_buffer _buffer { };
 	Pipe_handle_registry _registry { };
 	Handle_fifo _io_progress_waiters { };
-
-	Genode::Signal_context_capability &_notify_sigh;
-
-	bool _new_handle_active { true };
-	Pipe_buffer _buffer { };
 	Handle_fifo _read_ready_waiters { };
 	unsigned _num_writers = 0;
-	bool _waiting_for_writers = true;
+
+	Genode::Signal_context_capability &_notify_sigh;
+	Genode::Signal_context_capability &_watch_sigh;
+
+	bool _new_handle_active { true };
+	bool _waiting_for_writers { true };
+
+
+	void _notify_watchers();
 
 public:
 	Pipe(Genode::Allocator &alloc, Pipe_space &space,
-	     Genode::Signal_context_capability &notify_sigh)
-	: _alloc(alloc), _space_elem(*this, space), _notify_sigh(notify_sigh) { }
+       Genode::Signal_context_capability &notify_sigh,
+       Genode::Signal_context_capability &watch_sigh)
+: _alloc(alloc), _space_elem(*this, space),
+  _notify_sigh(notify_sigh), _watch_sigh(watch_sigh) { }
 
-	~Pipe() { }
+	~Pipe() = default;
 
 	typedef Genode::String<8> Name;
 	Name name() const

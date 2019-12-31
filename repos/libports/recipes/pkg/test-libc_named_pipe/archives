@@ -1,8 +1,8 @@
 _/src/init
 _/src/libc
+_/src/pipe
 _/src/posix
 _/src/stdcxx
-_/src/test-libc_named_pipe_sink
 _/src/test-libc_named_pipe_source
 _/src/vfs
-_/src/vfs_named_pipe
+_/src/vfs_pipe

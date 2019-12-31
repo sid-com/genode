@@ -104,6 +104,10 @@ void Vfs_pipe::Pipe::notify()
 		elem.object().read_ready_response(); });
 }
 
+void Vfs_pipe::Pipe::_notify_watchers() {
+	Genode::Signal_transmitter(_watch_sigh).submit(); }
+
+
 Vfs_pipe::Write_result Vfs_pipe::Pipe::write(Pipe_handle &handle,
                                              const char *buf, file_size count,
                                              file_size &out_count)
@@ -120,9 +124,10 @@ Vfs_pipe::Write_result Vfs_pipe::Pipe::write(Pipe_handle &handle,
 	if (out < count)
 		_io_progress_waiters.enqueue(handle.io_progress_elem);
 
-	if (notify)
+	if (notify) {
+		_notify_watchers();
 		submit_signal();
-
+	}
 	return Write_result::WRITE_OK;
 }
 

@@ -21,10 +21,13 @@ extern "C" Vfs::File_system_factory *vfs_file_system_factory(void)
 {
 	struct Factory : Vfs::File_system_factory
 	{
-		Vfs::File_system *create(Vfs::Env &env, Genode::Xml_node) override
+		Vfs::File_system *create(Vfs::Env &env, Genode::Xml_node node) override
 		{
-			return new (env.alloc())
-				Vfs_pipe::File_system(env);
+			if (node.has_sub_node("fifo")) {
+				return new (env.alloc()) Vfs_pipe::Fifo_file_system(env);
+			} else {
+				return new (env.alloc()) Vfs_pipe::File_system(env);
+			}
 		}
 	};
 

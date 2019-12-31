@@ -17,31 +17,30 @@
 #include "pipe.h"
 
 Vfs_pipe::Pipe_handle::Pipe_handle(Vfs::File_system &fs,
-	                               Genode::Allocator &alloc,
-	                               unsigned flags,
-	                               Pipe_handle_registry &registry,
-	                               Pipe &p)
-	:
-		Vfs::Vfs_handle(fs, fs, alloc, flags),
-		Pipe_handle_registry_element(registry, *this),
-		pipe(p),
-		writer(flags == Directory_service::OPEN_MODE_WRONLY)
-	{ }
+                                   Genode::Allocator &alloc,
+                                   unsigned flags,
+                                   Pipe_handle_registry &registry,
+                                   Pipe &p)
+:
+	Vfs::Vfs_handle(fs, fs, alloc, flags),
+	Pipe_handle_registry_element(registry, *this),
+	pipe(p),
+	writer(flags == Directory_service::OPEN_MODE_WRONLY) { }
 
 Vfs_pipe::Pipe_handle::~Pipe_handle() {
 	pipe.remove(*this); }
 
 Vfs_pipe::Write_result
 Vfs_pipe::Pipe_handle::write(const char *buf,
-	                         file_size count,
-	                         file_size &out_count) {
+                             file_size count,
+                             file_size &out_count) {
 	return pipe.write(*this, buf, count, out_count); }
 
 
 Vfs_pipe::Read_result
 Vfs_pipe::Pipe_handle::read(char *buf,
-	                        file_size count,
-	                        file_size &out_count) {
+                            file_size count,
+                            file_size &out_count) {
 	return pipe.read(*this, buf, count, out_count); }
 
 
@@ -59,13 +58,13 @@ Vfs_pipe::Pipe_handle::notify_read_ready()
 }
 
 Vfs_pipe::New_pipe_handle::New_pipe_handle(Vfs::File_system &fs,
-	                Genode::Allocator &alloc,
-	                unsigned flags,
-	                Pipe_space &pipe_space,
-	                Genode::Signal_context_capability &notify_sigh)
-	: Vfs::Vfs_handle(fs, fs, alloc, flags),
-	  pipe(*(new (alloc) Pipe(alloc, pipe_space, notify_sigh)))
-	{ }
+                                           Genode::Allocator &alloc,
+                                           unsigned flags,
+                                           Pipe_space &pipe_space,
+                                           Genode::Signal_context_capability &notify_sigh,
+                                           Genode::Signal_context_capability &watch_sigh)
+: Vfs::Vfs_handle(fs, fs, alloc, flags),
+  pipe(*(new (alloc) Pipe(alloc, pipe_space, notify_sigh, watch_sigh))) { }
 
 Vfs_pipe::New_pipe_handle::~New_pipe_handle()
 {
@@ -74,8 +73,8 @@ Vfs_pipe::New_pipe_handle::~New_pipe_handle()
 
 Vfs_pipe::Read_result
 Vfs_pipe::New_pipe_handle::read(char *buf,
-	                 file_size count,
-	                 file_size &out_count)
+                                file_size count,
+                                file_size &out_count)
 {
 	auto name = pipe.name();
 	if (name.length() < count) {
