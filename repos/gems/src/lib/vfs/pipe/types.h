@@ -34,7 +34,8 @@ namespace Vfs_pipe {
 	typedef Vfs::File_io_service::Read_result Read_result;
 	typedef Vfs::File_io_service::Sync_result Sync_result;
 	typedef Vfs::File_io_service::Write_result Write_result;
-	typedef Genode::Path<32> Path;
+	enum { MAX_PATH_LENGTH = 256 };
+	typedef Genode::Path<MAX_PATH_LENGTH> Path;
 
 	enum { PIPE_BUF_SIZE = 8192U };
 	typedef Genode::Ring_buffer<unsigned char, PIPE_BUF_SIZE+1> Pipe_buffer;

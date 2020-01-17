@@ -17,6 +17,7 @@
 #define _VFS_PIPE_FILE_SYSTEM_H_
 
 #include <base/registry.h>
+#include <util/list.h>
 #include <vfs/env.h>
 #include <vfs/file_system.h>
 
@@ -24,8 +25,6 @@
 #include "pipe.h"
 
 namespace Vfs_pipe {
-	typedef Genode::Registered<Vfs_watch_handle>      Registered_watch_handle;
-	typedef Genode::Registry<Registered_watch_handle> Watch_handle_registry;
 	
 	class File_system;
 	class Fifo_file_system;
@@ -34,25 +33,37 @@ namespace Vfs_pipe {
 
 class Vfs_pipe::File_system : public Vfs::File_system
 {
-protected:
+private:
 
-	Pipe_space _pipe_space { };
+	struct Pipe_watch_handle : Vfs_watch_handle
+	{
+		Pipe_space::Id id;
+		Pipe_watch_handle(File_system &fs, Genode::Allocator &alloc, Pipe_space::Id id)
+			: Vfs_watch_handle(fs, alloc), id(id) { }
+
+	};
+
+	typedef Genode::Registered<Pipe_watch_handle>     Registered_watch_handle;
+	typedef Genode::Registry<Registered_watch_handle> Watch_handle_registry;
 
 	/*
 	 * XXX: a hack to defer cross-thread notifications at
 	 * the libc until the io_progress handler
 	 */
 	Genode::Io_signal_handler<File_system> _notify_handler;
-	Genode::Signal_context_capability _notify_cap { _notify_handler };
+
+	Watch_handle_registry                  _watch_handle_registry { };
 
 	void _notify_any();
+	void _inform_watchers(Pipe_space::Id id);
 
-	Watch_handle_registry _watch_handle_registry { };
-	Genode::Io_signal_handler<File_system> _watch_signal_handler;
-	Genode::Signal_context_capability _watch_cap { _watch_signal_handler };
+protected:
 
-	void _inform_watchers();
+	Vfs::Env&                         _env;
+	Pipe_space                        _pipe_space { };
+	Genode::Signal_context_capability _notify_cap { _notify_handler };
 
+	virtual bool _get_pipe_id(const char* cpath, Pipe_space::Id &id);
 
 public:
 
@@ -95,7 +106,7 @@ public:
 
 	void close(Vfs_watch_handle *handle) override;
 
-	Watch_result watch(char const       *path,
+	Watch_result watch(char const       *cpath,
                      Vfs_watch_handle **handle,
                      Allocator        &alloc) override;
 
@@ -126,24 +137,29 @@ class Vfs_pipe::Fifo_file_system : public Vfs_pipe::File_system
 {
 private:
 
-	Pipe _pipe;
+	class Fifo_element : public Genode::List<Fifo_element>::Element
+	{
+	private:
+		Path _path;
+		Pipe_space::Id _id;
+	public:
+
+		Fifo_element(Path path, Pipe_space::Id id) : _path(path), _id(id) { }
+		const Path& path() const { return _path; }
+		const Pipe_space::Id& id() const { return _id; }
+	};
+	Genode::List<Fifo_element> _elements { };
+	Genode::Lock mutable       _lock     { };
+
+protected:
+
+	virtual bool _get_pipe_id(const char* cpath, Pipe_space::Id &id) override;
 
 public:
 
-	Fifo_file_system(Vfs::Env &env);
+	Fifo_file_system(Vfs::Env &env, const Genode::Xml_node &config);
 
 	~Fifo_file_system();
-
-	Open_result open(const char *cpath,
-                   unsigned mode,
-                   Vfs::Vfs_handle **handle,
-                   Genode::Allocator &alloc) override;
-
-	void close(Vfs::Vfs_handle *vfs_handle) override;
-
-	Stat_result stat(const char *cpath, Stat &out) override;
-
-	const char* leaf_path(const char *cpath) override;
 };
 
 #endif /* _VFS_PIPE_FILE_SYSTEM_H_ */

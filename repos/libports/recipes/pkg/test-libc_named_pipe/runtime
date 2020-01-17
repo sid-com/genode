@@ -1,9 +1,9 @@
 <runtime ram="32M" caps="1000" binary="init">
 
 	<events>
-		<timeout meaning="failed" sec="30" />
+		<timeout meaning="failed" sec="10" />
 		<log meaning="succeeded">--- test succeeded ---</log>
-		<log meaning="failed">Error: </log>
+		<log meaning="failed">Error:</log>
 	</events>
 
 	<content>
@@ -37,12 +37,10 @@
 			<resource name="RAM" quantum="4M"/>
 			<config>
 				<vfs>
-					<dir name="upstream">
-						<pipe><fifo/></pipe>
-					</dir>
-					<dir name="downstream">
-						<pipe><fifo/></pipe>
-					</dir>
+					<pipe>
+						<fifo name="upstream"/>
+						<fifo name="downstream"/>
+					</pipe>
 				</vfs>
 				<default-policy root="/" writeable="yes"/>
 			</config>

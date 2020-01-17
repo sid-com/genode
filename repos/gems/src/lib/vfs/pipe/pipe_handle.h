@@ -66,8 +66,7 @@ struct Vfs_pipe::New_pipe_handle : Vfs::Vfs_handle
 	                Genode::Allocator &alloc,
 	                unsigned flags,
 	                Pipe_space &pipe_space,
-	                Genode::Signal_context_capability &notify_sigh,
-	                Genode::Signal_context_capability &watch_sigh);
+	                Genode::Signal_context_capability &notify_sigh);
 
 	~New_pipe_handle();
 

@@ -20,8 +20,7 @@
 Vfs_pipe::File_system::File_system(Vfs::Env &env)
 :
 	_notify_handler(env.env().ep(), *this, &File_system::_notify_any),
-	_watch_signal_handler(env.env().ep(), *this,
-	                    &Vfs_pipe::File_system::_inform_watchers) { }
+	_env(env) { }
 
 
 void Vfs_pipe::File_system::_notify_any()
@@ -30,12 +29,22 @@ void Vfs_pipe::File_system::_notify_any()
 		pipe.notify(); });
 }
 
-void Vfs_pipe::File_system::_inform_watchers()
+void Vfs_pipe::File_system::_inform_watchers(Pipe_space::Id id)
 {
-	_watch_handle_registry.for_each([this] (Registered_watch_handle &handle) {
-		handle.watch_response();
+	_watch_handle_registry.for_each([&] (Registered_watch_handle &handle) {
+		/* only notify the right watcher */
+		if (handle.id.value == id.value) {
+			handle.watch_response();
+		}
 	});
 }
+
+bool Vfs_pipe::File_system::_get_pipe_id(const char* cpath,
+                                         Pipe_space::Id& id)
+{
+	return 0 != ascii_to(cpath, id.value);
+}
+
 
 /***********************
  ** Directory service **
@@ -56,31 +65,30 @@ Vfs_pipe::Open_result Vfs_pipe::File_system::open(const char *cpath,
 	if (path == "/new") {
 		if ((Directory_service::OPEN_MODE_ACCMODE & mode)
 			== Directory_service::OPEN_MODE_WRONLY) {
-			return Open_result::OPEN_ERR_NO_PERM;
+			return OPEN_ERR_NO_PERM;
 		}
 		*handle = new (alloc)
-			New_pipe_handle(*this, alloc, mode, _pipe_space, _notify_cap, _watch_cap);
-		return Open_result::OPEN_OK;
+			New_pipe_handle(*this, alloc, mode, _pipe_space, _notify_cap);
+		return OPEN_OK;
 	}
 
 	path.strip_last_element();
-	if (!path.has_single_element())
-		return Open_result::OPEN_ERR_UNACCESSIBLE;
-
-	Pipe_space::Id id { ~0UL };
-	if (!ascii_to(path.last_element(), id.value))
-		return Open_result::OPEN_ERR_UNACCESSIBLE;
-
-	Open_result result = Open_result::OPEN_ERR_UNACCESSIBLE;
-	try {
-		_pipe_space.apply<Pipe&>(id, [&] (Pipe &pipe) {
-			Path filename(cpath);
-			filename.keep_only_last_element();
-			result = pipe.open(*this, filename, handle, alloc);
-		});
+	if (!path.has_single_element()) {
+		return OPEN_ERR_UNACCESSIBLE;
 	}
-	catch (Pipe_space::Unknown_id) { }
 
+	Open_result result { OPEN_ERR_UNACCESSIBLE };
+	Pipe_space::Id id { ~0UL };
+	if (_get_pipe_id(path.last_element(), id)) {
+		try {
+			_pipe_space.apply<Pipe&>(id, [&] (Pipe &pipe) {
+				Path filename(cpath);
+				filename.keep_only_last_element();
+				result = pipe.open(*this, filename, handle, alloc);
+			});
+		}
+		catch (Pipe_space::Unknown_id) { }
+	}
 	return result;
 }
 
@@ -103,14 +111,16 @@ Vfs_pipe::Opendir_result Vfs_pipe::File_system::opendir(char const *cpath,
 
 	if (path.has_single_element()) {
 		Pipe_space::Id id { ~0UL };
-		if (ascii_to(path.last_element(), id.value)) try {
-			_pipe_space.apply<Pipe&>(id, [&] (Pipe&) {
-				*handle = new (alloc)
-					Vfs_handle(*this, *this, alloc, 0);
-				result = OPENDIR_OK;
-			});
+		if (_get_pipe_id(path.last_element(), id)) {
+			try {
+				_pipe_space.apply<Pipe&>(id, [&] (Pipe&) {
+					*handle = new (alloc)
+						Vfs_handle(*this, *this, alloc, 0);
+					result = OPENDIR_OK;
+				});
+			}
+			catch (Pipe_space::Unknown_id) { }
 		}
-		catch (Pipe_space::Unknown_id) { }
 	}
 	return result;
 }
@@ -134,7 +144,6 @@ void Vfs_pipe::File_system::close(Vfs::Vfs_handle *vfs_handle)
 
 Vfs_pipe::Stat_result Vfs_pipe::File_system::stat(const char *cpath, Stat &out)
 {
-	Stat_result result { STAT_ERR_NO_ENTRY };
 	Path path(cpath);
 
 	out = Stat { };
@@ -151,60 +160,67 @@ Vfs_pipe::Stat_result Vfs_pipe::File_system::stat(const char *cpath, Stat &out)
 		return STAT_OK;
 	}
 
+	Stat_result result { STAT_ERR_NO_ENTRY };
+
 	if (path.has_single_element()) {
 		Pipe_space::Id id { ~0UL };
-		if (ascii_to(path.last_element(), id.value)) try {
-			_pipe_space.apply<Pipe&>(id, [&] (Pipe &pipe) {
-				out = Stat {
-					.size              = 2,
-					.type              = Node_type::DIRECTORY,
-					.rwx               = Node_rwx::rwx(),
-					.inode             = Genode::addr_t(&pipe),
-					.device            = Genode::addr_t(this),
-					.modification_time = { }
-				};
-				result = STAT_OK;
-			});
+		if (_get_pipe_id(path.last_element(), id)) {
+			try {
+				_pipe_space.apply<Pipe&>(id, [&] (Pipe &pipe) {
+					out = Stat {
+						.size              = 2,
+						.type              = Node_type::DIRECTORY,
+						.rwx               = Node_rwx::rwx(),
+						.inode             = Genode::addr_t(&pipe),
+						.device            = Genode::addr_t(this),
+						.modification_time = { }
+					};
+					result = STAT_OK;
+				});
+			}
+			catch (Pipe_space::Unknown_id) { }
 		}
-		catch (Pipe_space::Unknown_id) { }
 	} else {
 		/* maybe this is /N/in or /N/out */
 		path.strip_last_element();
-		if (!path.has_single_element())
+		if (!path.has_single_element()) {
 			/* too many directory levels */
 			return result;
+		}
 
 		Pipe_space::Id id { ~0UL };
-		if (ascii_to(path.last_element(), id.value)) try {
-			_pipe_space.apply<Pipe&>(id, [&] (Pipe &pipe) {
-				Path filename(cpath);
-				filename.keep_only_last_element();
-				if (filename == "/in") {
-					out = Stat {
-						.size              = file_size(pipe.buffer_avail_capacity()),
-						.type              = Node_type::CONTINUOUS_FILE,
-						.rwx               = Node_rwx::wo(),
-						.inode             = Genode::addr_t(&pipe) + 1,
-						.device            = Genode::addr_t(this),
-						.modification_time = { }
-					};
-					result = STAT_OK;
-				} else
-				if (filename == "/out") {
-					out = Stat {
-						.size              = file_size(PIPE_BUF_SIZE
-						                             - pipe.buffer_avail_capacity()),
-						.type              = Node_type::CONTINUOUS_FILE,
-						.rwx               = Node_rwx::ro(),
-						.inode             = Genode::addr_t(&pipe) + 2,
-						.device            = Genode::addr_t(this),
-						.modification_time = { }
-					};
-					result = STAT_OK;
-				}
-			});
+		if (_get_pipe_id(path.last_element(), id)) {
+			try {
+				_pipe_space.apply<Pipe&>(id, [&] (Pipe &pipe) {
+					Path filename(cpath);
+					filename.keep_only_last_element();
+					if (filename == "/in") {
+						out = Stat {
+							.size              = file_size(pipe.buffer_avail_capacity()),
+							.type              = Node_type::CONTINUOUS_FILE,
+							.rwx               = Node_rwx::wo(),
+							.inode             = Genode::addr_t(&pipe) + 1,
+							.device            = Genode::addr_t(this),
+							.modification_time = { }
+						};
+						result = STAT_OK;
+					} else
+					if (filename == "/out") {
+						out = Stat {
+							.size              = file_size(PIPE_BUF_SIZE
+							                             - pipe.buffer_avail_capacity()),
+							.type              = Node_type::CONTINUOUS_FILE,
+							.rwx               = Node_rwx::ro(),
+							.inode             = Genode::addr_t(&pipe) + 2,
+							.device            = Genode::addr_t(this),
+							.modification_time = { }
+						};
+						result = STAT_OK;
+					}
+				});
+			}
+			catch (Pipe_space::Unknown_id) { }
 		}
-		catch (Pipe_space::Unknown_id) { }
 	}
 	return result;
 }
@@ -224,18 +240,18 @@ bool Vfs_pipe::File_system::directory(char const *cpath)
 	if (path == "/") return true;
 
 	if (!path.has_single_element())
-		return Open_result::OPEN_ERR_UNACCESSIBLE;
-
-	Pipe_space::Id id { ~0UL };
-	if (!ascii_to(path.last_element(), id.value))
 		return false;
 
+	Pipe_space::Id id { ~0UL };
+
 	bool result = false;
-	try {
-		_pipe_space.apply<Pipe&>(id, [&] (Pipe &) {
-			result = true; });
+	if (_get_pipe_id(path.last_element(), id)) {
+		try {
+			_pipe_space.apply<Pipe&>(id, [&] (Pipe &) {
+				result = true; });
+		}
+		catch (Pipe_space::Unknown_id) { }
 	}
-	catch (Pipe_space::Unknown_id) { }
 
 	return result;
 }
@@ -250,25 +266,28 @@ const char* Vfs_pipe::File_system::leaf_path(const char *cpath)
 	if (!path.has_single_element()) {
 		/* maybe this is /N/in or /N/out */
 		path.strip_last_element();
-		if (!path.has_single_element())
+		if (!path.has_single_element()) {
 			/* too many directory levels */
 			return nullptr;
+		}
 
 		Path filename(cpath);
 		filename.keep_only_last_element();
-		if (filename != "/in" && filename != "/out")
+		if (filename != "/in" && filename != "/out") {
 			/* not a pipe file */
 			return nullptr;
+		}
 	}
 
 	Pipe_space::Id id { ~0UL };
-	if (ascii_to(path.last_element(), id.value)) try {
-		/* check if the pipe directory exists */
-		_pipe_space.apply<Pipe&>(id, [&] (Pipe &) {
-			result = cpath; });
+	if (_get_pipe_id(path.last_element(), id)) {
+		try {
+			/* check if the pipe directory exists */
+			_pipe_space.apply<Pipe&>(id, [&] (Pipe &) {
+				result = cpath; });
+		}
+		catch (Pipe_space::Unknown_id) { }
 	}
-	catch (Pipe_space::Unknown_id) { }
-
 	return result;
 }
 
@@ -278,20 +297,30 @@ void Vfs_pipe::File_system::close(Vfs_watch_handle *handle)
 		destroy(handle->alloc(), handle);
 }
 
-Vfs_pipe::Watch_result Vfs_pipe::File_system::watch(char const *path,
+Vfs_pipe::Watch_result Vfs_pipe::File_system::watch(char const *cpath,
                                                     Vfs_watch_handle **handle,
                                                     Allocator        &alloc)
 {
-	Path filename(path);
-	if (filename != "/out") {
+	Path path(cpath);
+	path.keep_only_last_element();
+	if (path != "/out") {
 		return WATCH_ERR_UNACCESSIBLE;
 	}
 	try {
-		Vfs_watch_handle &watch_handle = *new (alloc)
-			Registered_watch_handle(_watch_handle_registry, *this, alloc);
+		Pipe_space::Id id { ~0UL };
+		Path filename(cpath);
 
-		*handle = &watch_handle;
-		return WATCH_OK;
+		/* watch for file xxx in path /xxx/out */
+		filename.strip_last_element();
+		if (_get_pipe_id(filename.base(), id)) {
+			Pipe_watch_handle &watch_handle = *new (alloc)
+				Registered_watch_handle(_watch_handle_registry, *this, alloc, id);
+
+			*handle = &watch_handle;
+			return WATCH_OK;
+		} else {
+			return WATCH_ERR_UNACCESSIBLE;
+		}
 	}
 	catch (Genode::Out_of_ram)  { return WATCH_ERR_OUT_OF_RAM;  }
 	catch (Genode::Out_of_caps) { return WATCH_ERR_OUT_OF_CAPS; }
@@ -307,7 +336,13 @@ Vfs_pipe::Write_result Vfs_pipe::File_system::write(Vfs_handle *vfs_handle,
                                                     file_size &out_count)
 {
 	if (Pipe_handle *handle = dynamic_cast<Pipe_handle*>(vfs_handle)) {
-		return handle->write(src, count, out_count);
+		/* avoid notify storm */
+		bool notify_watchers = handle->pipe.buffer_empty();
+		Vfs_pipe::Write_result result = handle->write(src, count, out_count);
+		if (notify_watchers) {
+			_inform_watchers(handle->pipe.id());
+		}
+		return result;
 	}
 
 	return WRITE_ERR_INVALID;
@@ -348,75 +383,45 @@ Vfs_pipe::Sync_result Vfs_pipe::File_system::complete_sync(Vfs_handle*) {
 	return SYNC_OK; }
 
 
-Vfs_pipe::Fifo_file_system::Fifo_file_system(Vfs::Env& env)
-:
-	File_system(env),
-	_pipe(env.alloc(), _pipe_space, _notify_cap, _watch_cap)
-{
-}
 
+
+Vfs_pipe::Fifo_file_system::Fifo_file_system(Vfs::Env& env,
+                                             const Genode::Xml_node &config)
+:
+	File_system(env)
+{
+	config.for_each_sub_node("fifo", [&] (Xml_node fifo) {
+		auto path = fifo.attribute_value("name", Genode::String<MAX_PATH_LENGTH>());
+
+		Pipe* pipe = new (env.alloc())
+			Pipe(env.alloc(), _pipe_space, _notify_cap);
+		if (pipe) {
+			Genode::Lock::Guard guard(_lock);
+			auto element = new (env.alloc()) Fifo_element(path, pipe->id());
+			if (element) {
+				_elements.insert(element);
+			}
+		}
+	});
+}
 
 Vfs_pipe::Fifo_file_system::~Fifo_file_system()
 {
-	_pipe.cleanup();
-}
-
-
-Vfs_pipe::Open_result Vfs_pipe::Fifo_file_system::open(const char *cpath,
-                                                       unsigned,
-                                                       Vfs::Vfs_handle **handle,
-                                                       Genode::Allocator &alloc)
-{
-	Path filename(cpath);
-	return _pipe.open(*this, filename, handle, alloc);
-}
-
-void Vfs_pipe::Fifo_file_system::close(Vfs::Vfs_handle* vfs_handle)
-{
-	_pipe.cleanup();
-	File_system::close(vfs_handle);
-}
-
-
-Vfs_pipe::Stat_result Vfs_pipe::Fifo_file_system::stat(const char* cpath, Stat& out)
-{
-	Stat_result result { STAT_ERR_NO_ENTRY };
-	Path filename(cpath);
-
-	out = Stat { };
-
-	if (filename == "/in") {
-		out = Stat {
-			.size              = file_size(_pipe.buffer_avail_capacity()),
-			.type              = Node_type::CONTINUOUS_FILE,
-			.rwx               = Node_rwx::wo(),
-			.inode             = Genode::addr_t(this) + 1,
-			.device            = Genode::addr_t(this),
-			.modification_time = { }
-		};
-		result = STAT_OK;
-	} else
-	if (filename == "/out") {
-		out = Stat {
-			.size              = file_size(PIPE_BUF_SIZE - _pipe.buffer_avail_capacity()),
-			.type              = Node_type::CONTINUOUS_FILE,
-			.rwx               = Node_rwx::ro(),
-			.inode             = Genode::addr_t(this) + 2,
-			.device            = Genode::addr_t(this),
-			.modification_time = { }
-		};
-		result = STAT_OK;
+	for (auto element=_elements.first(); element; element=element->next()) {
+		_elements.remove(element);
+		destroy(_env.alloc(), element);
 	}
-	return result;
 }
 
-
-const char* Vfs_pipe::Fifo_file_system::leaf_path(const char* cpath)
+bool Vfs_pipe::Fifo_file_system::_get_pipe_id(const char* cpath,
+                                              Pipe_space::Id& id)
 {
-	Path path(cpath);
-	if (path == "/") return cpath;
-	if (path == "/in") return cpath;
-	if (path == "/out") return cpath;
-
-	return nullptr;
+	Genode::Lock::Guard guard(_lock);
+	for (auto element=_elements.first(); element; element=element->next()) {
+		if (element->path() == Path(cpath)) {
+			id = element->id();
+			return true;
+		}
+	}
+	return false;
 }

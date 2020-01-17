@@ -61,10 +61,9 @@ Vfs_pipe::New_pipe_handle::New_pipe_handle(Vfs::File_system &fs,
                                            Genode::Allocator &alloc,
                                            unsigned flags,
                                            Pipe_space &pipe_space,
-                                           Genode::Signal_context_capability &notify_sigh,
-                                           Genode::Signal_context_capability &watch_sigh)
+                                           Genode::Signal_context_capability &notify_sigh)
 : Vfs::Vfs_handle(fs, fs, alloc, flags),
-  pipe(*(new (alloc) Pipe(alloc, pipe_space, notify_sigh, watch_sigh))) { }
+  pipe(*(new (alloc) Pipe(alloc, pipe_space, notify_sigh))) { }
 
 Vfs_pipe::New_pipe_handle::~New_pipe_handle()
 {
@@ -76,7 +75,7 @@ Vfs_pipe::New_pipe_handle::read(char *buf,
                                 file_size count,
                                 file_size &out_count)
 {
-	auto name = pipe.name();
+	auto name = Genode::String<8>(pipe.id().value);
 	if (name.length() < count) {
 		memcpy(buf, name.string(), name.length());
 		out_count = name.length();

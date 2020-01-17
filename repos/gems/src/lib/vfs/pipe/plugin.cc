@@ -24,7 +24,7 @@ extern "C" Vfs::File_system_factory *vfs_file_system_factory(void)
 		Vfs::File_system *create(Vfs::Env &env, Genode::Xml_node node) override
 		{
 			if (node.has_sub_node("fifo")) {
-				return new (env.alloc()) Vfs_pipe::Fifo_file_system(env);
+				return new (env.alloc()) Vfs_pipe::Fifo_file_system(env, node);
 			} else {
 				return new (env.alloc()) Vfs_pipe::File_system(env);
 			}

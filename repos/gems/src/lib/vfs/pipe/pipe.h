@@ -37,27 +37,21 @@ private:
 	unsigned _num_writers = 0;
 
 	Genode::Signal_context_capability &_notify_sigh;
-	Genode::Signal_context_capability &_watch_sigh;
 
 	bool _new_handle_active { true };
 	bool _waiting_for_writers { true };
 
-
-	void _notify_watchers();
-
 public:
 	Pipe(Genode::Allocator &alloc, Pipe_space &space,
-       Genode::Signal_context_capability &notify_sigh,
-       Genode::Signal_context_capability &watch_sigh)
+       Genode::Signal_context_capability &notify_sigh)
 : _alloc(alloc), _space_elem(*this, space),
-  _notify_sigh(notify_sigh), _watch_sigh(watch_sigh) { }
+  _notify_sigh(notify_sigh) { }
 
 	~Pipe() = default;
 
-	typedef Genode::String<8> Name;
-	Name name() const
+	Pipe_space::Id id() const
 	{
-		return Name(_space_elem.id().value);
+		return _space_elem.id();
 	}
 
 	bool buffer_empty() const

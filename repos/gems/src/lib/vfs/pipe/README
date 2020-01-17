@@ -23,9 +23,10 @@ Here a sample scenario where stdin of a component is attached to a named pipe:
 	<resource name="RAM" quantum="4M"/>
 	<config>
 		<vfs>
-			<dir name="upstream">
-				<pipe><fifo/></pipe>
-			</dir>
+			<pipe>
+				<fifo name="upstream"/>
+				<fifo name="downstream"/>
+			</pipe>
 		</vfs>
 		<default-policy root="/" writeable="yes"/>
 	</config>
@@ -45,7 +46,7 @@ Here a sample scenario where stdin of a component is attached to a named pipe:
 </start>
 ```
 
-The directory named `upstream` represents a pipe and contains an `in` and `out`
+The fifo named `upstream` represents a pipe and contains an `in` and `out`
 file for writing and reading respectively to the pipe.
 
 A remote component can now write to `/dev/pipe/upstream/in` so the data written
