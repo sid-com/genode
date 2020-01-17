@@ -1,0 +1,156 @@
+
+source $gapfruit_dir/repos/gapfruit/run/corallite_functions.inc
+
+
+create_boot_directory
+
+
+set is_autopilot [get_cmd_switch --autopilot]
+
+
+import_from_depot [depot_user]/src/[base_src]
+import_from_depot [depot_user]/src/init
+import_from_depot [depot_user]/src/file_manager
+import_from_depot [depot_user]/src/libc
+import_from_depot [depot_user]/src/pipe
+import_from_depot [depot_user]/src/posix
+import_from_depot [depot_user]/src/stdcxx
+import_from_depot [depot_user]/src/report_rom
+
+
+if {$is_autopilot} {
+	import_from_depot [depot_user]/src/vfs
+	import_from_depot [depot_user]/src/vfs_pipe
+}
+
+
+set config {
+<config verbose="no"><parent-provides>
+		<service name="ROM"/>
+		<service name="PD"/>
+		<service name="RM"/>
+		<service name="CPU"/>
+		<service name="LOG"/>
+		<service name="Timer"/>
+	</parent-provides>
+	<default-route>
+		<any-service> <parent/> <any-child/> </any-service>
+	</default-route>
+	<default caps="256"/>
+
+	<start name="timer" caps="100">
+		<resource name="RAM" quantum="4M"/>
+		<provides>
+			<service name="Timer"/>
+		</provides>
+	</start>
+
+	<start name="report_rom">
+		<resource name="RAM" quantum="4M"/>
+		<provides> <service name="ROM"/> <service name="Report"/> </provides>
+		<config verbose="yes"/>
+	</start>
+	<start name="vfs">
+		<provides> <service name="File_system"/> </provides>
+		<resource name="RAM" quantum="4M"/>
+		<config>
+			<vfs>
+				<pipe>
+					<fifo name="upstream"/>
+					<fifo name="downstream"/>
+				</pipe>
+			</vfs>
+			<default-policy root="/" writeable="yes"/>
+		</config>
+	</start>
+	<start name="file_copy">
+		<binary name="pipe"/>
+		<resource name="RAM" quantum="4M"/>
+		<config report="yes">
+			<vfs>
+				<dir name="ro">
+					<rom name="test-data.bin"/>
+				</dir>
+				<dir name="dev">
+					<dir name="pipe"> <fs/> </dir>
+				</dir>
+			</vfs>
+			<libc stdin="/ro/test-data.bin" stdout="/dev/pipe/upstream/in"/>
+		</config>
+	</start>
+	<start name="compare">
+		<binary name="test-libc_named_pipe_compare"/>
+		<resource name="RAM" quantum="64M"/>
+		<config>
+			<vfs>
+				<dir name="ro">
+					<rom name="test-data.bin"/>
+				</dir>
+				<dir name="dev">
+					<dir name="pipe"> <fs/> </dir>
+					<log/>
+				</dir>
+			</vfs>
+			<libc stdout="/dev/log"/>
+		</config>
+		<route>
+			<service name="Timer"> <child name="timer"/> </service>
+			<any-service> <parent/> <any-child/> </any-service>
+		</route>
+	</start>
+	<start name="echo">
+		<binary name="pipe"/>
+		<resource name="RAM" quantum="64M"/>
+		<config>
+			<vfs>
+				<dir name="dev">
+					<dir name="pipe"> <fs/> </dir>
+					<log/>
+				</dir>
+			</vfs>
+			<libc stdin="/dev/pipe/upstream/out" stdout="/dev/pipe/downstream/in" stderr="/dev/log"/>
+		</config>
+	</start>
+</config>
+}
+
+set config [replace_package_template_info $config]
+
+install_config [replace_package_template_info $config]
+
+
+set build_components {
+	test/libc_named_pipe_compare
+}
+
+append_if [expr !$is_autopilot] build_components {
+	test/libc_named_pipe_compare
+	server/vfs
+	lib/vfs/pipe
+}
+
+build $build_components
+
+set boot_components {
+	test-libc_named_pipe_compare
+}
+
+append_if [expr !$is_autopilot] boot_components {
+	test-libc_named_pipe_compare
+	vfs
+	vfs.lib.so
+	vfs_pipe.lib.so
+}
+
+# define the test data
+exec mkdir -p bin
+catch { exec dd if=/dev/urandom of=bin/test-data.bin bs=1M count=4 }
+
+append boot_components { test-data.bin }
+
+build_boot_image $boot_components
+
+append qemu_args " -nographic "
+
+
+run_genode_until {.*--- test succeeded ---} 60
