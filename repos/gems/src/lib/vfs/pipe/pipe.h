@@ -59,7 +59,7 @@ public:
 		return _buffer.empty();
 	}
 
-	bool buffer_avail_capacity() const
+	int buffer_avail_capacity() const
 	{
 		return _buffer.avail_capacity();
 	}
