@@ -164,6 +164,9 @@ class Ata::Protocol : public Ahci::Protocol, Noncopyable
 			block_number_t end = block_number + request.operation.count - 1;
 
 			auto overlap_check = [&] (Request const &req) {
+				if (req.operation.type == Block::Operation::Type::SYNC)
+					return false;
+
 				block_number_t pending_start = req.operation.block_number;
 				block_number_t pending_end   = pending_start + req.operation.count - 1;
 
@@ -284,16 +287,18 @@ class Ata::Protocol : public Ahci::Protocol, Noncopyable
 
 		Response submit(Port &port, Block::Request const request) override
 		{
-			Block::Operation op = request.operation;
-			bool const sync = (op.type == Block::Operation::Type::SYNC);
+			Block::Operation const op = request.operation;
+
+			bool const sync  = (op.type == Block::Operation::Type::SYNC);
+			bool const write = (op.type == Block::Operation::Type::WRITE);
 
 			if ((sync && _slot_states) || _syncing)
 				return Response::RETRY;
 
-			if (_writeable == false && request.operation.type == Block::Operation::Type::WRITE)
+			if (_writeable == false && write)
 				return Response::REJECTED;
 
-			if (Block::Operation::has_payload(request.operation.type)) {
+			if (Block::Operation::has_payload(op.type)) {
 				if (port.sanity_check(request) == false || port.dma_base == 0)
 					return Response::REJECTED;
 
@@ -317,10 +322,6 @@ class Ata::Protocol : public Ahci::Protocol, Noncopyable
 			                    op.count * _block_size());
 
 			/* setup ATA command */
-
-			/* write bit for command header + read/write ATA requests */
-			bool const write = (op.type == Block::Operation::Type::WRITE);
-
 			if (sync) {
 				table.fis.flush_cache_ext();
 				_syncing = true;
