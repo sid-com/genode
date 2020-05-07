@@ -25,26 +25,6 @@ struct Genode::Trace::Connection : Genode::Connection<Genode::Trace::Session>,
                                    Genode::Trace::Session_client
 {
 	/**
-	 * Extend session quota on demand while calling an RPC function
-	 *
-	 * \noapi
-	 */
-	template <typename FUNC>
-	auto _retry(FUNC func) -> decltype(func())
-	{
-		enum { UPGRADE_ATTEMPTS = ~0U };
-		return Genode::retry<Out_of_ram>(
-			[&] () {
-				return Genode::retry<Out_of_caps>(
-					[&] () { return func(); },
-					[&] () { Trace::Connection::upgrade_caps(2); },
-					UPGRADE_ATTEMPTS);
-			},
-			[&] () { Trace::Connection::upgrade_ram(8*1024); },
-			UPGRADE_ATTEMPTS);
-	}
-
-	/**
 	 * Constructor
 	 *
 	 * \param ram_quota        RAM donated for tracing purposes
@@ -55,20 +35,20 @@ struct Genode::Trace::Connection : Genode::Connection<Genode::Trace::Session>,
 	:
 		Genode::Connection<Session>(env,
 			session(env.parent(), "ram_quota=%lu, arg_buffer_size=%lu, parent_levels=%u",
-			        ram_quota + 2048, arg_buffer_size, parent_levels)),
+			        ram_quota + 10*1024, arg_buffer_size, parent_levels)),
 		Session_client(env.rm(), cap())
 	{ }
 
 	size_t subjects(Subject_id *dst, size_t dst_len) override
 	{
-		return _retry([&] () {
+		return retry_with_upgrade(Ram_quota{8*1024}, Cap_quota{2}, [&] () {
 			return Session_client::subjects(dst, dst_len); });
 	}
 
 	template <typename FN>
 	size_t for_each_subject_info(FN const &fn)
 	{
-		return _retry([&] () {
+		return retry_with_upgrade(Ram_quota{8*1024}, Cap_quota{2}, [&] () {
 			return Session_client::for_each_subject_info(fn); });
 	}
 };
