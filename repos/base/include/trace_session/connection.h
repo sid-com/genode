@@ -24,6 +24,12 @@ namespace Genode { namespace Trace { struct Connection; } }
 struct Genode::Trace::Connection : Genode::Connection<Genode::Trace::Session>,
                                    Genode::Trace::Session_client
 {
+	template <typename FUNC>
+	auto _retry(FUNC func) -> decltype(func())
+	{
+		return retry_with_upgrade(Ram_quota{8*1024}, Cap_quota{2}, func);
+	}
+
 	/**
 	 * Constructor
 	 *
@@ -39,16 +45,27 @@ struct Genode::Trace::Connection : Genode::Connection<Genode::Trace::Session>,
 		Session_client(env.rm(), cap())
 	{ }
 
+	Policy_id alloc_policy(size_t size) override
+	{
+		return _retry([&] () {
+			return Session_client::alloc_policy(size); });
+	}
+
+	void trace(Subject_id s, Policy_id p, size_t buffer_size) override
+	{
+		_retry([&] () { Session_client::trace(s, p, buffer_size); });
+	}
+
 	size_t subjects(Subject_id *dst, size_t dst_len) override
 	{
-		return retry_with_upgrade(Ram_quota{8*1024}, Cap_quota{2}, [&] () {
+		return _retry([&] () {
 			return Session_client::subjects(dst, dst_len); });
 	}
 
 	template <typename FN>
 	size_t for_each_subject_info(FN const &fn)
 	{
-		return retry_with_upgrade(Ram_quota{8*1024}, Cap_quota{2}, [&] () {
+		return _retry([&] () {
 			return Session_client::for_each_subject_info(fn); });
 	}
 };
