@@ -359,7 +359,9 @@ append config "
 		<resource name=\"RAM\" quantum=\"$memory_vmm_vm\"/>"
 append config {
 		<route>
-			<service name="Timer"><child name="timer"/></service>}
+			<service name="Timer"><child name="timer"/></service>
+			<service name="ROM" label="config">
+				<parent label="vm_seoul.cfg"/> </service>}
 append_if [expr $use_nic_session && $use_nic_bridge] config {
 			<service name="Nic"> <child name="nic_bridge"/> </service>}
 append_if [expr $use_nic_session && !$use_nic_bridge] config {
@@ -367,8 +369,6 @@ append_if [expr $use_nic_session && !$use_nic_bridge] config {
 append_if $use_genode_iso config {
 			<service name="ROM" unscoped_label="seoul"> <parent/> </service>
 			<service name="ROM" unscoped_label="ld.lib.so"> <parent/> </service>
-			<service name="ROM" label="config">
-				<parent label="vm_seoul.cfg"/> </service>
 			<service name="ROM" label="platform_info"> <parent/> </service>
 			<service name="ROM"><child name="iso9660"/></service>}
 append_if $use_block_vdi config {
