@@ -219,7 +219,7 @@ append  config { </wifi_config>
 }
 
 append_if $use_nic_router config {
-	<start name="nic_router">
+	<start name="nic_router" caps="120">
 		<resource name="RAM" quantum="5M"/>
 		<provides><service name="Nic"/></provides>
 		<config verbose_domain_state="yes">
