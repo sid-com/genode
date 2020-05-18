@@ -18,7 +18,6 @@ create_boot_directory
 
 
 import_from_depot [depot_user]/src/init
-import_from_depot [depot_user]/src/nic_router
 import_from_depot [depot_user]/src/posix
 import_from_depot [depot_user]/src/vfs
 import_from_depot [depot_user]/src/zlib
@@ -27,7 +26,6 @@ import_from_depot [depot_user]/src/zlib
 set build_components {
 	lib/vfs/lwip
 	drivers/nic
-	server/nic_dump
 	test/tcp_echo_server
 }
 
@@ -68,58 +66,10 @@ append config {
 					<log/> <null/>
 					<inline name="rtc">2000-01-01 00:00</inline>
 					<dir name="socket">
-						<lwip ip_addr="10.0.3.2" netmask="255.255.255.0" gateway="10.0.3.1"/>
+						<lwip ip_addr="10.0.2.55" netmask="255.255.255.0" gateway="10.0.2.1"/>
 					</dir>
 				</dir>
 			</vfs>
-		</config>
-		<route>
-			<service name="Nic"> <child name="nic_dump"/> </service>
-			<any-service> <parent/> <any-child/> </any-service>
-		</route>
-	</start>
-
-	<start name="nic_dump" priority="-1" caps="600">
-		<resource name="RAM" quantum="32M"/>
-		<provides><service name="Nic"/></provides>
-		<config uplink="bridge"
-		        downlink="router"
-		        time="yes"
-		        default="name"
-		        eth="name"
-		        arp="all"
-		        ipv4="default"
-		        dhcp="no"
-		        udp="no"
-		        icmp="all"
-		        tcp="default" />
-		<route>
-			<service name="Nic"> <child name="nic_router"  label="nic_dump -> "/> </service>
-			<any-service> <parent/> <any-child/> </any-service>
-		</route>
-	</start>
-
-	<start name="nic_router">
-		<resource name="RAM" quantum="16M"/>
-		<provides><service name="Nic"/></provides>
-		<config verbose_domain_state="no"
-		        verbose_packets="no"
-		        verbose_packet_drop="no">
-
-			<policy label="nic_dump -> " domain="server"/>
-			<uplink                             domain="uplink"/>
-
-			<domain name="uplink" interface="10.0.2.55/24" gateway="10.0.2.1">
-				<nat domain="server" tcp-ports="100" />
-				<tcp-forward port="8899" domain="server" to="10.0.3.2" />
-			</domain>
-
-			<domain name="server" interface="10.0.3.1/24">
-				<dhcp-server ip_first="10.0.3.2"
-				             ip_last="10.0.3.2"
-				             ip_lease_time_sec="600"/>
-			</domain>
-
 		</config>
 		<route>
 			<service name="Nic"> <child name="nic_drv"/> </service>
@@ -161,7 +111,6 @@ set boot_modules {
 	libc_pipe.lib.so
 	libm.lib.so
 	linux_nic_drv
-	nic_dump
 }
 
 
