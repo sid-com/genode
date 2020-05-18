@@ -30,6 +30,9 @@ class Echo_server::Server_main
 		Env& _env;
 		pthread_t _server_thread;
 
+		Timer::Connection _timer { _env };
+		Genode::Signal_handler<Server_main> _timer_handler { _env.ep(), *this, &Server_main::_handle_timer };
+
 		static void *connection_handler(void *arg);
 		static void *start_server(void* envp);
 
@@ -44,10 +47,16 @@ class Echo_server::Server_main
 		class Startup_connection_thread_failed : Genode::Exception { };
 		class Null_pointer_exception : Genode::Exception { };
 
+		void _handle_timer()
+		{
+			log("still alive");
+		}
 	public:
 		Server_main(Env& env)
 			: _env(env)
 		{
+			_timer.sigh(_timer_handler);
+			_timer.trigger_periodic(10*1000*1000);
 			Libc::with_libc([&] () {
 				pthread_create(&_server_thread, 0, start_server, &env);
 			});
