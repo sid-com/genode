@@ -27,6 +27,7 @@ import_from_depot [depot_user]/src/zlib
 set build_components {
 	lib/vfs/lwip
 	drivers/nic
+	server/nic_dump
 	test/tcp_echo_server
 }
 
@@ -73,7 +74,27 @@ append config {
 			</vfs>
 		</config>
 		<route>
-			<service name="Nic"> <child name="nic_router" label="tcp_echo_server -> "/> </service>
+			<service name="Nic"> <child name="nic_dump"/> </service>
+			<any-service> <parent/> <any-child/> </any-service>
+		</route>
+	</start>
+
+	<start name="nic_dump" priority="-1" caps="600">
+		<resource name="RAM" quantum="32M"/>
+		<provides><service name="Nic"/></provides>
+		<config uplink="bridge"
+		        downlink="router"
+		        time="yes"
+		        default="name"
+		        eth="name"
+		        arp="all"
+		        ipv4="default"
+		        dhcp="no"
+		        udp="no"
+		        icmp="all"
+		        tcp="default" />
+		<route>
+			<service name="Nic"> <child name="nic_router"  label="nic_dump -> "/> </service>
 			<any-service> <parent/> <any-child/> </any-service>
 		</route>
 	</start>
@@ -85,7 +106,7 @@ append config {
 		        verbose_packets="no"
 		        verbose_packet_drop="no">
 
-			<policy label="tcp_echo_server -> " domain="server"/>
+			<policy label="nic_dump -> " domain="server"/>
 			<uplink                             domain="uplink"/>
 
 			<domain name="uplink" interface="10.0.2.55/24" gateway="10.0.2.1">
@@ -140,6 +161,7 @@ set boot_modules {
 	libc_pipe.lib.so
 	libm.lib.so
 	linux_nic_drv
+	nic_dump
 }
 
 
