@@ -1,0 +1,200 @@
+
+create_boot_directory
+
+
+set is_autopilot [get_cmd_switch --autopilot]
+
+
+import_from_depot \
+	[depot_user]/src/[base_src] \
+	[depot_user]/src/fs_rom \
+	[depot_user]/src/init \
+	[depot_user]/src/libc \
+	[depot_user]/src/report_rom \
+
+
+if {$is_autopilot} {
+	import_from_depot [depot_user]/src/vfs
+	import_from_depot [depot_user]/src/vfs_pipe
+}
+
+
+install_config {
+<config verbose="no">
+	<parent-provides>
+		<service name="ROM"/>
+		<service name="PD"/>
+		<service name="RM"/>
+		<service name="CPU"/>
+		<service name="LOG"/>
+		<service name="Timer"/>
+	</parent-provides>
+	<default-route>
+		<any-service> <parent/> <any-child/> </any-service>
+	</default-route>
+	<default caps="256"/>
+
+	<start name="timer" caps="100">
+		<resource name="RAM" quantum="4M"/>
+		<provides>
+			<service name="Timer"/>
+		</provides>
+	</start>
+
+	<start name="vfs">
+		<provides>
+			<service name="File_system"/>
+		</provides>
+		<resource name="RAM" quantum="4M"/>
+		<config>
+			<vfs>
+				<pipe>
+					<fifo name="upstream"/>
+					<fifo name="downstream"/>
+				</pipe>
+			</vfs>
+			<default-policy root="/" writeable="yes"/>
+		</config>
+	</start>
+
+	<start name="ram_fs">
+		<binary name="vfs"/>
+		<resource name="RAM" quantum="2M"/>
+		<provides>
+			<service name="File_system"/>
+		</provides>
+		<config>
+			<vfs>
+				<inline name="init_template">
+					<config verbose="no">
+						<parent-provides>
+							<service name="CPU"/>
+							<service name="File_system"/>
+							<service name="LOG"/>
+							<service name="PD"/>
+							<service name="RM"/>
+							<service name="ROM"/>
+							<service name="Timer"/>
+						</parent-provides>
+						<default caps="100"/>
+
+						<start name="echo">
+							<binary name="test-libc_fifo_pipe"/>
+							<resource name="RAM" quantum="2M"/>
+							<config type="echo">
+								<vfs>
+									<dir name="dev">
+										<dir name="pipe-in"> <fs/> </dir>
+										<dir name="pipe-out"> <fs/> </dir>
+										<log/>
+									</dir>
+								</vfs>
+								<libc stdin="/dev/pipe-out/upstream/out" stdout="/dev/pipe-in/downstream/in" stderr="/dev/log"/>
+							</config>
+							<route>
+								<any-service> <parent/> <any-child/> </any-service>
+							</route>
+						</start>
+
+					</config>
+				</inline>
+			</vfs>
+			<policy label="fs_rom -> " root="/" writeable="no"/>
+		</config>
+	</start>
+
+	<start name="fs_rom">
+		<resource name="RAM" quantum="1M"/>
+		<provides>
+			<service name="ROM"/>
+		</provides>
+		<route>
+			<service name="File_system"> <child name="ram_fs"/> </service>
+			<any-service> <parent/> <any-child/> </any-service>
+		</route>
+	</start>
+
+	<start name="report_rom">
+		<resource name="RAM" quantum="1M"/>
+		<provides>
+			<service name="ROM"/>
+			<service name="Report"/>
+		</provides>
+		<config verbose="no">
+			<policy label="init.config" report="init.config"/>
+		</config>
+	</start>
+
+	<start name="fifo-pipe-test">
+		<binary name="test-libc_fifo_pipe"/>
+		<resource name="RAM" quantum="64M"/>
+		<config iterations="10">
+			<vfs>
+				<dir name="ro">
+					<rom name="test-data.bin"/>
+				</dir>
+				<dir name="dev">
+					<dir name="pipe-in"> <fs/> </dir>
+					<dir name="pipe-out"> <fs/> </dir>
+					<log/>
+				</dir>
+			</vfs>
+			<libc stdout="/dev/log"/>
+		</config>
+		<route>
+			<service name="ROM"    label="init_template">  <child name="fs_rom"     label="init_template"/> </service>
+			<service name="ROM"    label="empty_template"> <child name="fs_rom"     label="empty_template"/> </service>
+			<service name="Report" label="init.config">    <child name="report_rom" label="init.config"/> </service>
+			<service name="File_system">                   <child name="vfs"/> </service>
+			<service name="Timer">                         <child name="timer"/> </service>
+			<any-service> <parent/> <any-child/> </any-service>
+		</route>
+	</start>
+
+	<start name="init" caps="200">
+		<resource name="RAM" quantum="4M"/>
+		<route>
+			<service name="ROM" label="config">    <child name="report_rom" label="init.config"/> </service>
+			<service name="File_system">           <child name="vfs"/> </service>
+			<service name="Timer">                 <child name="timer"/> </service>
+			<any-service> <parent/> <any-child/> </any-service>
+		</route>
+	</start>
+
+</config>
+}
+
+
+set build_components {
+	test/libc_fifo_pipe
+}
+
+append_if [expr !$is_autopilot] build_components {
+	server/vfs
+	lib/vfs/pipe
+}
+
+build $build_components
+
+set boot_components {
+	test-libc_fifo_pipe
+}
+
+append_if [expr !$is_autopilot] boot_components {
+	vfs
+	vfs.lib.so
+	vfs_pipe.lib.so
+}
+
+# define the test data
+exec mkdir -p bin
+catch { exec dd if=/dev/urandom of=bin/test-data.bin bs=1k count=64 }
+
+append boot_components { test-data.bin }
+
+build_boot_image $boot_components
+
+append qemu_args " -nographic "
+
+
+run_genode_until {.*--- test succeeded ---} 60
