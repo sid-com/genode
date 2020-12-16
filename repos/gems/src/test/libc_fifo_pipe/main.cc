@@ -35,8 +35,8 @@ namespace Test_fifo_pipe {
 	class Test;
 	class Echo;
 	static char const*  TEST_DATA_FILENAME  { "/ro/test-data.bin" };
-	static char const*  SEND_FILENAME       { "/dev/pipe-in/upstream/in" };
-	static char const*  RECEIVE_FILENAME    { "/dev/pipe-out/downstream/out" };
+	static char const*  SEND_FILENAME       { "/dev/pipe-in/upstream" };
+	static char const*  RECEIVE_FILENAME    { "/dev/pipe-out/downstream" };
 	enum { BUF_SIZE = 4*1024 };
 }
 
@@ -163,19 +163,19 @@ class Test_fifo_pipe::Test
 
 		void _write_init_config(Attached_rom_dataspace& rom, unsigned iteration)
 		{
-			_init_config.generate([&] (Xml_generator& xml) {
-				rom.xml().for_each_sub_node([&] (const Xml_node& node) {
+			_init_config.generate([&rom, iteration] (Xml_generator& xml) {
+				rom.xml().for_each_sub_node([&xml, iteration] (const Xml_node& node) {
 					if (node.type() != "start") {
-						node.with_raw_node([&] (const char* addr, const size_t size) {
+						node.with_raw_node([&xml] (char const *addr, const size_t size) {
 						xml.append(addr, size);
 					});
 					} else {
 						auto const name { node.attribute_value("name", Genode::String<128> { }) };
-						xml.node("start", [&] ( ) {
+						xml.node("start", [&xml, &node, &name, iteration] ( ) {
 							xml.attribute("name", name);
 							xml.attribute("version", iteration);
 
-							node.with_raw_content([&] (char const *addr, size_t const size) {
+							node.with_raw_content([&xml] (char const *addr, size_t const size) {
 								xml.append(addr, size);
 							});
 						});
@@ -195,7 +195,7 @@ class Test_fifo_pipe::Test
 
 		void start_threads()
 		{
-			Libc::with_libc([&] () {
+			Libc::with_libc([this] () {
 				if (0 != pthread_attr_init(&_worker_settings)) {
 					error("error setting thread settings");
 					exit(1);
@@ -219,7 +219,7 @@ class Test_fifo_pipe::Test
 
 		void stop_threads()
 		{
-			Libc::with_libc([&] () {
+			Libc::with_libc([this] () {
 				log("joining sender thread ");
 				auto const ret_sender = pthread_join(_sender_thread, nullptr);
 				if (0 != ret_sender) {
@@ -277,6 +277,7 @@ class Test_fifo_pipe::Main
 
 		Main(Env &env) : _env(env)
 		{
+			/* the type attribute describes whether we are running as test or as echo */
 			auto type = _config.xml().attribute_value("type", Genode::String<64> { });
 			if (type == "echo") {
 				log("echo started");
@@ -296,7 +297,6 @@ class Test_fifo_pipe::Main
 			}
 		}
 
-		~Main() = default;
 };
 
 

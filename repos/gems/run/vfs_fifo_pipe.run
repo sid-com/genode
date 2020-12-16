@@ -56,7 +56,6 @@ install_config {
 			<default-policy root="/" writeable="yes"/>
 		</config>
 	</start>
-
 	<start name="ram_fs">
 		<binary name="vfs"/>
 		<resource name="RAM" quantum="2M"/>
@@ -89,7 +88,7 @@ install_config {
 										<log/>
 									</dir>
 								</vfs>
-								<libc stdin="/dev/pipe-out/upstream/out" stdout="/dev/pipe-in/downstream/in" stderr="/dev/log"/>
+								<libc stdin="/dev/pipe-out/upstream" stdout="/dev/pipe-in/downstream" stderr="/dev/log"/>
 							</config>
 							<route>
 								<any-service> <parent/> <any-child/> </any-service>
@@ -100,6 +99,8 @@ install_config {
 				</inline>
 			</vfs>
 			<policy label="fs_rom -> " root="/" writeable="no"/>
+
+
 		</config>
 	</start>
 
@@ -128,7 +129,7 @@ install_config {
 	<start name="fifo-pipe-test">
 		<binary name="test-libc_fifo_pipe"/>
 		<resource name="RAM" quantum="64M"/>
-		<config iterations="10">
+		<config iterations="100">
 			<vfs>
 				<dir name="ro">
 					<rom name="test-data.bin"/>

@@ -152,7 +152,7 @@ struct Vfs_pipe::Pipe
 			if (0 == num_writers) {
 				/* flush buffer */
 				if (!buffer.empty()) {
-					Genode::warning("flushing non-empty buffer avail_capacity=", buffer.avail_capacity());
+					Genode::warning("flushing non-empty buffer capacity=", buffer.avail_capacity());
 				}
 				buffer.reset();
 				io_progress_waiters.dequeue_all([] (Handle_element /*&elem*/) { });
@@ -241,9 +241,8 @@ struct Vfs_pipe::Pipe
 			return Read_result::READ_QUEUED;
 		}
 
-		if (notify) {
+		if (notify)
 			submit_signal();
-		}
 
 		return Read_result::READ_OK;
 	}
@@ -319,7 +318,6 @@ class Vfs_pipe::File_system : public Vfs::File_system
 {
 	protected:
 
-		Vfs::Env  &_env;
 		Pipe_space _pipe_space { };
 
 		/*
@@ -335,7 +333,7 @@ class Vfs_pipe::File_system : public Vfs::File_system
 				pipe.notify(); });
 		}
 
-		virtual bool _get_pipe_id(const char* cpath, Pipe_space::Id &id)
+		virtual bool _get_pipe_id(const char* cpath, Pipe_space::Id &id) const
 		{
 			return 0 != ascii_to(cpath, id.value);
 		}
@@ -343,10 +341,7 @@ class Vfs_pipe::File_system : public Vfs::File_system
 	public:
 
 		File_system(Vfs::Env &env)
-		:
-		_env(env),
-		_notify_handler(env.env().ep(), *this, &File_system::_notify_any)
-		{ }
+		: _notify_handler(env.env().ep(), *this, &File_system::_notify_any) { }
 
 		const char* type() override { return "pipe"; }
 
@@ -367,19 +362,16 @@ class Vfs_pipe::File_system : public Vfs::File_system
 			Path path(cpath);
 
 			if (path == "/new") {
-				if ((Directory_service::OPEN_MODE_ACCMODE & mode)
-				    == Directory_service::OPEN_MODE_WRONLY) {
+				if ((Directory_service::OPEN_MODE_ACCMODE & mode) == Directory_service::OPEN_MODE_WRONLY)
 					return Open_result::OPEN_ERR_NO_PERM;
-				}
 				*handle = new (alloc)
 					New_pipe_handle(*this, alloc, mode, _pipe_space, _notify_cap);
 				return Open_result::OPEN_OK;
 			}
 
 			path.strip_last_element();
-			if (!path.has_single_element()) {
+			if (!path.has_single_element())
 				return Open_result::OPEN_ERR_UNACCESSIBLE;
-			}
 
 			Pipe_space::Id id { ~0UL };
 			Open_result result { Open_result::OPEN_ERR_UNACCESSIBLE };
@@ -402,7 +394,6 @@ class Vfs_pipe::File_system : public Vfs::File_system
 	                           Allocator &alloc) override
 		{
 			/* open dummy handles on directories */
-
 			if (create) return OPENDIR_ERR_PERMISSION_DENIED;
 			Path path(cpath);
 
@@ -607,9 +598,9 @@ class Vfs_pipe::File_system : public Vfs::File_system
 		                   const char *src, file_size count,
 		                   file_size &out_count) override
 		{
-			if (Pipe_handle *handle = dynamic_cast<Pipe_handle*>(vfs_handle)) {
+			if (Pipe_handle *handle = dynamic_cast<Pipe_handle*>(vfs_handle))
 				return handle->write(src, count, out_count);
-			}
+
 			return WRITE_ERR_INVALID;
 		}
 
@@ -617,28 +608,26 @@ class Vfs_pipe::File_system : public Vfs::File_system
 		                          char *dst, file_size count,
 		                          file_size &out_count) override
 		{
-			if (Pipe_handle *handle = dynamic_cast<Pipe_handle*>(vfs_handle)) {
+			if (Pipe_handle *handle = dynamic_cast<Pipe_handle*>(vfs_handle))
 				return handle->read(dst, count, out_count);
-			}
-			if (New_pipe_handle *handle = dynamic_cast<New_pipe_handle*>(vfs_handle)) {
+
+			if (New_pipe_handle *handle = dynamic_cast<New_pipe_handle*>(vfs_handle))
 				return handle->read(dst, count, out_count);
-			}
+
 			return READ_ERR_INVALID;
 		}
 
 		bool read_ready(Vfs_handle *vfs_handle) override
 		{
-			if (Pipe_handle *handle = dynamic_cast<Pipe_handle*>(vfs_handle)) {
+			if (Pipe_handle *handle = dynamic_cast<Pipe_handle*>(vfs_handle))
 				return handle->read_ready();
-			}
 			return true;
 		}
 
 		bool notify_read_ready(Vfs_handle *vfs_handle) override
 		{
-			if (Pipe_handle *handle = dynamic_cast<Pipe_handle*>(vfs_handle)) {
+			if (Pipe_handle *handle = dynamic_cast<Pipe_handle*>(vfs_handle))
 				return handle->notify_read_ready();
-			}
 			return false;
 		}
 
@@ -660,16 +649,18 @@ class Vfs_pipe::Fifo_file_system : public Vfs_pipe::File_system
 				Path _path;
 				Pipe_space::Id _id;
 			public:
-				Fifo_element(Path path, Pipe_space::Id id) : _path(path), _id(id) { }
-				const Path& path() const { return _path; }
-				const Pipe_space::Id& id() const { return _id; }
+				Fifo_element(Path const &path, Pipe_space::Id const &id)
+				: _path(path), _id(id) { }
+				Path const &path() const { return _path; }
+				Pipe_space::Id const &id() const { return _id; }
 		};
 		Genode::List<Fifo_element> _elements { };
 		Genode::Mutex mutable      _mutex    { };
+		Vfs::Env                  &_env;
 
 	protected:
 
-		virtual bool _get_pipe_id(const char* cpath, Pipe_space::Id &id) override
+		virtual bool _get_pipe_id(const char* cpath, Pipe_space::Id &id) const override
 		{
 			Genode::Mutex::Guard guard(_mutex);
 			for (auto element=_elements.first(); element; element=element->next()) {
@@ -683,9 +674,10 @@ class Vfs_pipe::Fifo_file_system : public Vfs_pipe::File_system
 
 	public:
 
-		Fifo_file_system(Vfs::Env &env, Genode::Xml_node config) : File_system(env)
+		Fifo_file_system(Vfs::Env &env, Genode::Xml_node const &config)
+		: File_system(env), _env(env)
 		{
-			config.for_each_sub_node("fifo", [&] (Xml_node fifo) {
+			config.for_each_sub_node("fifo", [&env, this] (Xml_node const &fifo) {
 				auto path = fifo.attribute_value("name", Genode::String<MAX_PATH_LENGTH>());
 
 				Pipe* pipe = new (env.alloc())
@@ -696,18 +688,127 @@ class Vfs_pipe::Fifo_file_system : public Vfs_pipe::File_system
 						Fifo_element(path, pipe->space_elem.id());
 					if (element) {
 						_elements.insert(element);
+					} else {
+						Genode::error("could not allocate fifo element");
 					}
+				} else {
+					Genode::error("could not allocate fifo pipe");
 				}
 			});
 		}
 
 		~Fifo_file_system()
 		{
+			Genode::Mutex::Guard guard(_mutex);
 			for (auto element=_elements.first(); element; element=element->next()) {
 				_elements.remove(element);
 				destroy(_env.alloc(), element);
 			}
 		}
+
+		virtual Open_result open(const char *cpath,
+		                         unsigned mode,
+		                         Vfs::Vfs_handle **handle,
+		                         Genode::Allocator &alloc) override
+		{
+			if (mode & OPEN_MODE_CREATE) {
+				Genode::warning("cannot open fifo pipe with OPEN_MODE_CREATE");
+				return OPEN_ERR_NO_PERM;
+			}
+
+			Path const path { cpath };
+			if (!path.has_single_element()) {
+				return Open_result::OPEN_ERR_UNACCESSIBLE;
+			}
+			if (!((mode == Open_mode::OPEN_MODE_RDONLY) ||
+			      (mode == Open_mode::OPEN_MODE_WRONLY))) {
+				Genode::error("fifo pipe only supports opening with WO or RO mode");
+				return Open_result::OPEN_ERR_UNACCESSIBLE;
+			}
+
+			Pipe_space::Id id { ~0UL };
+			Open_result result { Open_result::OPEN_ERR_UNACCESSIBLE };
+			if (_get_pipe_id(cpath, id)) {
+				try {
+					_pipe_space.apply<Pipe&>(id, [&] (Pipe &pipe) {
+						auto type { (mode == Open_mode::OPEN_MODE_RDONLY) ? "/out" : "/in" };
+						result = pipe.open(*this, type, handle, alloc);
+					});
+				}
+				catch (Pipe_space::Unknown_id) { }
+			}
+
+			return result;
+		}
+
+		Stat_result stat(const char *cpath, Stat &out) override
+		{
+			out = Stat { };
+			Stat_result result { STAT_ERR_NO_ENTRY };
+			Path const path { cpath };
+
+			if (path.has_single_element()) {
+				Pipe_space::Id id { ~0UL };
+				if (_get_pipe_id(cpath, id)) {
+					try {
+						_pipe_space.apply<Pipe&>(id, [&out, &result, this] (Pipe &pipe) {
+							out = Stat {
+								.size              = file_size(0),
+								.type              = Node_type::CONTINUOUS_FILE,
+								.rwx               = Node_rwx::rw(),
+								.inode             = Genode::addr_t(&pipe),
+								.device            = Genode::addr_t(this),
+								.modification_time = { }
+							};
+							result = STAT_OK;
+						});
+					}
+					catch (Pipe_space::Unknown_id) { }
+				}
+			}
+
+			return result;
+		}
+
+		bool directory(char const *cpath) override
+		{
+			Path const path { cpath };
+			if (path == "/") return true;
+			if (!path.has_single_element()) return false;
+
+			bool result { true };
+			Pipe_space::Id id { ~0UL };
+			if (_get_pipe_id(cpath, id)) {
+				try {
+					_pipe_space.apply<Pipe&>(id, [&result, &cpath] (Pipe &) {
+						result = false; });
+				}
+				catch (Pipe_space::Unknown_id) { }
+			}
+
+			return result;
+		}
+
+		char const *leaf_path(char const *cpath) override
+		{
+			Path path { cpath };
+			if (path == "/") return cpath;
+			if (!path.has_single_element()) return nullptr;
+
+			char const *result { nullptr };
+			Pipe_space::Id id { ~0UL };
+			if (_get_pipe_id(path.last_element(), id)) {
+				try {
+					/* check if the pipe exists */
+					_pipe_space.apply<Pipe&>(id, [&result, &cpath] (Pipe &) {
+						result = cpath; });
+				}
+				catch (Pipe_space::Unknown_id) { }
+			}
+
+			return result;
+		}
+
 };
 
 

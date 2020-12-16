@@ -41,16 +41,15 @@ Here a sample scenario where stdin of a component is attached to a named pipe:
 				<log/>
 			</dir>
 		</vfs>
-		<libc stdin="/dev/pipe/upstream/out" stdout="/dev/log" stderr="/dev/log"/>
+		<libc stdin="/dev/pipe/upstream" stdout="/dev/log" stderr="/dev/log"/>
 	</config>
 </start>
 ```
 
-The fifo named `upstream` represents a pipe and contains an `in` and `out`
-file for writing and reading respectively to the pipe.
+The fifo named `upstream` represents a named pipe file which can be opened with
+read-only or write-only flags.
 
-A remote component can now write to `/dev/pipe/upstream/in` so the data written
-is then accessible on stdin within "my-libc-app". Once the remote component
-closes the `/dev/pipe/upstream/in` file, an EOF is received on stdin of
-"my-libc-app". An example can be found in the autopilot test pkg
-test-libc_named_pipe.
+A remote component can now write to `/dev/pipe/upstream` so the data written is
+then accessible on stdin within "my-libc-app". Once the remote component closes
+the `/dev/pipe/upstream` file, an EOF is received on stdin of "my-libc-app". An
+example can be found in in run/vfs_fifo_pipe.run.
