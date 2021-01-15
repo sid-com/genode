@@ -10,7 +10,6 @@
 		<rom label="fs_rom"/>
 		<rom label="ld.lib.so"/>
 		<rom label="libc.lib.so"/>
-		<rom label="libm.lib.so"/>
 		<rom label="report_rom"/>
 		<rom label="test-data.bin"/>
 		<rom label="test-libc_fifo_pipe"/>
@@ -26,7 +25,6 @@
 			<service name="PD"/>
 			<service name="RM"/>
 			<service name="ROM"/>
-			<service name="Timer"/>
 		</parent-provides>
 		<default-route>
 			<any-service> <parent/> <any-child/> </any-service>
@@ -45,7 +43,10 @@
 						<fifo name="downstream"/>
 					</pipe>
 				</vfs>
-				<default-policy root="/" writeable="yes"/>
+				<policy label="init -> echo -> upstream" root="/" writeable="no" />
+				<policy label="init -> echo -> downstream" root="/" writeable="yes" />
+				<policy label="fifo-pipe-test -> upstream" root="/" writeable="yes" />
+				<policy label="fifo-pipe-test -> downstream" root="/" writeable="no" />
 			</config>
 		</start>
 
@@ -76,12 +77,12 @@
 								<config type="echo">
 									<vfs>
 										<dir name="dev">
-											<dir name="pipe-in"> <fs/> </dir>
-											<dir name="pipe-out"> <fs/> </dir>
+											<fs label="downstream"/>
+											<fs label="upstream"/>
 											<log/>
 										</dir>
 									</vfs>
-									<libc stdin="/dev/pipe-out/upstream" stdout="/dev/pipe-in/downstream" stderr="/dev/log"/>
+									<libc stdin="/dev/upstream" stdout="/dev/downstream" stderr="/dev/log"/>
 								</config>
 								<route>
 									<any-service> <parent/> <any-child/> </any-service>
@@ -126,8 +127,8 @@
 						<rom name="test-data.bin"/>
 					</dir>
 					<dir name="dev">
-						<dir name="pipe-in"> <fs/> </dir>
-						<dir name="pipe-out"> <fs/> </dir>
+						<fs label="upstream"/>
+						<fs label="downstream"/>
 						<log/>
 					</dir>
 				</vfs>

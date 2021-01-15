@@ -35,8 +35,8 @@ namespace Test_fifo_pipe {
 	class Test;
 	class Echo;
 	static char const*  TEST_DATA_FILENAME  { "/ro/test-data.bin" };
-	static char const*  SEND_FILENAME       { "/dev/pipe-in/upstream" };
-	static char const*  RECEIVE_FILENAME    { "/dev/pipe-out/downstream" };
+	static char const*  SEND_FILENAME       { "/dev/upstream" };
+	static char const*  RECEIVE_FILENAME    { "/dev/downstream" };
 	enum { BUF_SIZE = 4*1024 };
 }
 

@@ -1,4 +1,4 @@
 content: test-data.bin
 
 test-data.bin:
-	seq 5000 > $@
+	cp $(REP_DIR)/recipes/raw/test-libc_fifo_pipe/$@ $@
