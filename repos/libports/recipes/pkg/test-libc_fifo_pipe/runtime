@@ -43,10 +43,10 @@
 						<fifo name="downstream"/>
 					</pipe>
 				</vfs>
-				<policy label="init -> echo -> upstream" root="/" writeable="no" />
-				<policy label="init -> echo -> downstream" root="/" writeable="yes" />
-				<policy label="fifo-pipe-test -> upstream" root="/" writeable="yes" />
-				<policy label="fifo-pipe-test -> downstream" root="/" writeable="no" />
+				<policy label="init -> echo -> upstream" root="/.out" writeable="no" />
+				<policy label="init -> echo -> downstream" root="/.in" writeable="yes" />
+				<policy label="fifo-pipe-test -> upstream" root="/.in" writeable="yes" />
+				<policy label="fifo-pipe-test -> downstream" root="/.out" writeable="no" />
 			</config>
 		</start>
 
@@ -77,8 +77,8 @@
 								<config type="echo">
 									<vfs>
 										<dir name="dev">
-											<fs label="downstream"/>
-											<fs label="upstream"/>
+												<fs label="downstream"/>
+												<fs label="upstream"/>
 											<log/>
 										</dir>
 									</vfs>
@@ -121,24 +121,24 @@
 		<start name="fifo-pipe-test">
 			<binary name="test-libc_fifo_pipe"/>
 			<resource name="RAM" quantum="8M"/>
-			<config iterations="20">
+			<config iterations="10">
 				<vfs>
 					<dir name="ro">
 						<rom name="test-data.bin"/>
 					</dir>
 					<dir name="dev">
-						<fs label="upstream"/>
-						<fs label="downstream"/>
+						<dir name="writer"> <fs label="upstream"/> </dir>
+						<dir name="reader"> <fs label="downstream"/> </dir>
 						<log/>
 					</dir>
 				</vfs>
-				<libc stdout="/dev/log"/>
+				<libc stdout="/dev/log" stderr="/dev/log"/>
 			</config>
 			<route>
-				<service name="ROM"    label="init_template">  <child name="fs_rom"     label="init_template"/> </service>
-				<service name="ROM"    label="empty_template"> <child name="fs_rom"     label="empty_template"/> </service>
-				<service name="Report" label="init.config">    <child name="report_rom" label="init.config"/> </service>
 				<service name="File_system">                   <child name="vfs"/> </service>
+				<service name="Report" label="init.config">    <child name="report_rom" label="init.config"/> </service>
+				<service name="ROM"    label="init_template">  <child name="fs_rom"     label="init_template"/> </service>
+				<service name="ROM"    label="test-data.bin">  <parent label="init"/> </service>
 				<any-service> <parent/> <any-child/> </any-service>
 			</route>
 		</start>

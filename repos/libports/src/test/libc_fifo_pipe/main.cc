@@ -35,12 +35,12 @@ namespace Test_fifo_pipe {
 	class Test;
 	class Echo;
 	static char const*  TEST_DATA_FILENAME  { "/ro/test-data.bin" };
-	static char const*  SEND_FILENAME       { "/dev/upstream" };
-	static char const*  RECEIVE_FILENAME    { "/dev/downstream" };
+	static char const*  SEND_FILENAME       { "/dev/writer/upstream" };
+	static char const*  RECEIVE_FILENAME    { "/dev/reader/downstream" };
 	enum { BUF_SIZE = 4*1024 };
 }
 
-static size_t pipe(int src, int dest)
+static size_t copy(int src, int dest)
 {
 	using namespace Genode;
 	size_t total = 0;
@@ -99,7 +99,7 @@ class Test_fifo_pipe::Test
 				error("Cannot open test data file ", TEST_DATA_FILENAME);
 				exit(1);
 			}
-			auto const num { pipe(test_data_file, send_file) };
+			auto const num { copy(test_data_file, send_file) };
 			log("sent ", num, " bytes");
 			close(send_file);
 			close(test_data_file);
@@ -243,6 +243,22 @@ class Test_fifo_pipe::Test
 			log("re-starting echo");
 			_write_init_config(_run_echo_template, iteration);
 		}
+
+		void access_control()
+		{
+			Libc::with_libc([this] () {
+				int send_file = open(SEND_FILENAME, O_RDONLY);
+				if (send_file >= 0) {
+					error("should not have read access to ", SEND_FILENAME);
+					exit(-1);
+				}
+				int receive_file = open(RECEIVE_FILENAME, O_WRONLY);
+				if (receive_file >= 0) {
+					error("should not have write access to ", RECEIVE_FILENAME);
+					exit(-1);
+				}
+			});
+		}
 };
 
 class Test_fifo_pipe::Echo
@@ -254,7 +270,7 @@ class Test_fifo_pipe::Echo
 		void run() const
 		{
 			Libc::with_libc([] () {
-				auto const num { pipe(STDIN_FILENO, STDOUT_FILENO) };
+				auto const num { copy(STDIN_FILENO, STDOUT_FILENO) };
 				log("piped ", num, " bytes");
 			});
 		}
@@ -293,6 +309,7 @@ class Test_fifo_pipe::Main
 					test.start_threads();
 					test.stop_threads();
 				}
+				test.access_control();
 				log("--- test succeeded ---");
 			}
 		}

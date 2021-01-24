@@ -41,6 +41,7 @@ namespace Vfs_pipe {
 	struct New_pipe_handle;
 
 	class File_system;
+	class Pipe_file_system;
 	class Fifo_file_system;
 }
 
@@ -122,7 +123,7 @@ struct Vfs_pipe::Pipe
 	}
 
 	/**
-	 * Remove "/new" handle reference
+	 * Remove "/.new" handle reference
 	 */
 	void remove_new_handle() {
 		new_handle_active = false; }
@@ -146,12 +147,12 @@ struct Vfs_pipe::Pipe
 	                 Vfs::Vfs_handle **handle,
 	                 Genode::Allocator &alloc)
 	{
-		if (filename == "/in") {
+		if (filename == "/.in") {
 
 			if (0 == num_writers) {
 				/* flush buffer */
 				if (!buffer.empty()) {
-					Genode::warning("flushing non-empty buffer capacity=", buffer.avail_capacity());
+					Genode::warning("flushing non-empty buffer. capacity=", buffer.avail_capacity());
 				}
 				buffer.reset();
 				io_progress_waiters.dequeue_all([] (Handle_element /*&elem*/) { });
@@ -163,7 +164,7 @@ struct Vfs_pipe::Pipe
 			return Open_result::OPEN_OK;
 		}
 
-		if (filename == "/out") {
+		if (filename == "/.out") {
 			*handle = new (alloc)
 				Pipe_handle(fs, alloc, Directory_service::OPEN_MODE_RDONLY, registry, *this);
 
@@ -331,10 +332,8 @@ class Vfs_pipe::File_system : public Vfs::File_system
 				pipe.notify(); });
 		}
 
-		virtual bool _pipe_id(const char* cpath, Pipe_space::Id &id) const
-		{
-			return 0 != ascii_to(cpath, id.value);
-		}
+		virtual bool _pipe_id(const char* cpath, Pipe_space::Id &id) const = 0;
+
 
 		template <typename FN>
 		void _try_apply(Pipe_space::Id id, FN const &fn)
@@ -366,27 +365,41 @@ class Vfs_pipe::File_system : public Vfs::File_system
 		                 Vfs::Vfs_handle **handle,
 		                 Genode::Allocator &alloc) override
 		{
-			Path path(cpath);
-
-			if (path == "/new") {
-				if ((Directory_service::OPEN_MODE_ACCMODE & mode) == Directory_service::OPEN_MODE_WRONLY)
-					return Open_result::OPEN_ERR_NO_PERM;
-				*handle = new (alloc)
-					New_pipe_handle(*this, alloc, mode, _pipe_space, _notify_cap);
-				return Open_result::OPEN_OK;
+			if (mode & OPEN_MODE_CREATE) {
+				Genode::warning("cannot open fifo pipe with OPEN_MODE_CREATE");
+				return OPEN_ERR_NO_PERM;
 			}
 
-			path.strip_last_element();
-			if (!path.has_single_element())
+			if (!((mode == Open_mode::OPEN_MODE_RDONLY) ||
+			      (mode == Open_mode::OPEN_MODE_WRONLY))) {
+				Genode::error("fifo pipe only supports opening with WO or RO mode");
 				return Open_result::OPEN_ERR_UNACCESSIBLE;
+			}
 
+			Path const path { cpath };
+			if (!path.has_single_element()) {
+				/*
+				 * find out if the second to last element is "/.in" or "/.out"
+				 * and enforce read/write policy
+				 */
+				Path io { cpath };
+				io.strip_last_element();
+				io.keep_only_last_element();
+
+				if (io == "/.in" && mode != Open_mode::OPEN_MODE_WRONLY)
+					return Open_result::OPEN_ERR_UNACCESSIBLE;
+				if (io == "/.out" && mode != Open_mode::OPEN_MODE_RDONLY)
+					return Open_result::OPEN_ERR_UNACCESSIBLE;
+				if (!(io == "/.in" || io == "/.out"))
+					return Open_result::OPEN_ERR_UNACCESSIBLE;
+			}
+
+			auto result { Open_result::OPEN_ERR_UNACCESSIBLE };
 			Pipe_space::Id id { ~0UL };
-			Open_result result { Open_result::OPEN_ERR_UNACCESSIBLE };
 			if (_pipe_id(path.last_element(), id)) {
-				_try_apply(id, [&result, &cpath, this, &handle, &alloc] (Pipe &pipe) {
-					Path filename(cpath);
-					filename.keep_only_last_element();
-					result = pipe.open(*this, filename, handle, alloc);
+				_try_apply(id, [&mode, &result, this, &handle, &alloc] (Pipe &pipe) {
+					auto type { (mode == Open_mode::OPEN_MODE_RDONLY) ? "/.out" : "/.in" };
+					result = pipe.open(*this, type, handle, alloc);
 				});
 			}
 
@@ -394,33 +407,20 @@ class Vfs_pipe::File_system : public Vfs::File_system
 		}
 
 		Opendir_result opendir(char const *cpath, bool create,
-	                           Vfs_handle **handle,
-	                           Allocator &alloc) override
+		                       Vfs_handle **handle,
+		                       Allocator &alloc) override
 		{
 			/* open dummy handles on directories */
-			if (create) return OPENDIR_ERR_PERMISSION_DENIED;
-			Path path(cpath);
+			if (create)
+				return OPENDIR_ERR_PERMISSION_DENIED;
 
-			if (path == "/") {
+			Path const path { cpath };
+			if (path == "/" || path == "/.in" || path == "/.out") {
 				*handle = new (alloc)
 					Vfs_handle(*this, *this, alloc, 0);
 				return OPENDIR_OK;
 			}
-
-			Opendir_result result { OPENDIR_ERR_LOOKUP_FAILED };
-
-			if (path.has_single_element()) {
-				Pipe_space::Id id { ~0UL };
-				if (_pipe_id(path.last_element(), id)) {
-					_try_apply(id, [&result, this, &handle, &alloc] (Pipe &) {
-						*handle = new (alloc)
-							Vfs_handle(*this, *this, alloc, 0);
-						result = OPENDIR_OK;
-					});
-				}
-			}
-
-			return result;
+			return OPENDIR_ERR_PERMISSION_DENIED;
 		}
 
 		void close(Vfs::Vfs_handle *vfs_handle) override
@@ -447,31 +447,18 @@ class Vfs_pipe::File_system : public Vfs::File_system
 
 		Stat_result stat(const char *cpath, Stat &out) override
 		{
-			Stat_result result { STAT_ERR_NO_ENTRY };
-			Path path(cpath);
-
 			out = Stat { };
-
-			if (path == "/new") {
-				out = Stat {
-					.size              = 1,
-					.type              = Node_type::TRANSACTIONAL_FILE,
-					.rwx               = Node_rwx::wo(),
-					.inode             = Genode::addr_t(this),
-					.device            = Genode::addr_t(this),
-					.modification_time = { }
-				};
-				return STAT_OK;
-			}
+			Stat_result result { STAT_ERR_NO_ENTRY };
+			Path const path { cpath };
 
 			if (path.has_single_element()) {
 				Pipe_space::Id id { ~0UL };
-				if (_pipe_id(path.last_element(), id)) {
-					_try_apply(id, [&out, this, &result] (Pipe &pipe) {
+				if (_pipe_id(cpath, id)) {
+					_try_apply(id, [&out, this, &result] (Pipe const &pipe) {
 						out = Stat {
-							.size              = 2,
-							.type              = Node_type::DIRECTORY,
-							.rwx               = Node_rwx::rwx(),
+							.size              = file_size(0),
+							.type              = Node_type::CONTINUOUS_FILE,
+							.rwx               = Node_rwx::rw(),
 							.inode             = Genode::addr_t(&pipe),
 							.device            = Genode::addr_t(this),
 							.modification_time = { }
@@ -480,18 +467,15 @@ class Vfs_pipe::File_system : public Vfs::File_system
 					});
 				}
 			} else {
-				/* maybe this is /N/in or /N/out */
-				path.strip_last_element();
-				if (!path.has_single_element())
-					/* too many directory levels */
-					return result;
+				/* find out if the second to last element is "/.in" or "/.out" */
+				Path io { cpath };
+				io.strip_last_element();
+				io.keep_only_last_element();
 
 				Pipe_space::Id id { ~0UL };
 				if (_pipe_id(path.last_element(), id)) {
-					_try_apply(id, [&cpath, &out, this, &result] (Pipe &pipe) {
-						Path filename(cpath);
-						filename.keep_only_last_element();
-						if (filename == "/in") {
+					_try_apply(id, [&io, &out, this, &result] (Pipe const &pipe) {
+						if (io == "/.in") {
 							out = Stat {
 								.size              = file_size(pipe.buffer.avail_capacity()),
 								.type              = Node_type::CONTINUOUS_FILE,
@@ -502,7 +486,7 @@ class Vfs_pipe::File_system : public Vfs::File_system
 							};
 							result = STAT_OK;
 						} else
-						if (filename == "/out") {
+						if (io == "/.out") {
 							out = Stat {
 								.size              = file_size(PIPE_BUF_SIZE
 								                             - pipe.buffer.avail_capacity()),
@@ -531,16 +515,17 @@ class Vfs_pipe::File_system : public Vfs::File_system
 
 		bool directory(char const *cpath) override
 		{
-			Path path(cpath);
+			Path const path { cpath };
 			if (path == "/") return true;
-
+			if (path == "/.in") return true;
+			if (path == "/.out") return true;
 			if (!path.has_single_element()) return false;
 
-			bool result = false;
+			bool result { true };
 			Pipe_space::Id id { ~0UL };
-			if (_pipe_id(path.last_element(), id)) {
+			if (_pipe_id(cpath, id)) {
 				_try_apply(id, [&result] (Pipe &) {
-					result = true;
+					result = false;
 				});
 			}
 
@@ -549,25 +534,19 @@ class Vfs_pipe::File_system : public Vfs::File_system
 
 		const char* leaf_path(const char *cpath) override
 		{
-			Path path(cpath);
+			Path const path { cpath };
 			if (path == "/") return cpath;
-			if (path == "/new") return cpath;
 
-			char const *result = nullptr;
 			if (!path.has_single_element()) {
-				/* maybe this is /N/in or /N/out */
-				path.strip_last_element();
-				if (!path.has_single_element())
-					/* too many directory levels */
-					return nullptr;
-
-				Path filename(cpath);
-				filename.keep_only_last_element();
-				if (filename != "/in" && filename != "/out")
-					/* not a pipe file */
+				/* find out if the second to last element is "/.in" or "/.out" */
+				Path io { cpath };
+				io.strip_last_element();
+				io.keep_only_last_element();
+				if (!(io == "/.in" || io == "/.out"))
 					return nullptr;
 			}
 
+			char const *result { nullptr };
 			Pipe_space::Id id { ~0UL };
 			if (_pipe_id(path.last_element(), id)) {
 				_try_apply(id, [&result, &cpath] (Pipe &) {
@@ -577,6 +556,8 @@ class Vfs_pipe::File_system : public Vfs::File_system
 
 			return result;
 		}
+
+
 
 		/**********************
 		 ** File I/O service **
@@ -627,6 +608,80 @@ class Vfs_pipe::File_system : public Vfs::File_system
 };
 
 
+class Vfs_pipe::Pipe_file_system : public Vfs_pipe::File_system
+{
+	protected:
+
+		virtual bool _pipe_id(const char* cpath, Pipe_space::Id &id) const override
+		{
+			return 0 != ascii_to(cpath, id.value);
+		}
+
+	public:
+
+		Pipe_file_system(Vfs::Env &env)
+		:
+			File_system(env)
+		{ }
+
+		Open_result open(const char *cpath,
+		                 unsigned mode,
+		                 Vfs::Vfs_handle **handle,
+		                 Genode::Allocator &alloc) override
+		{
+			Path const path { cpath };
+
+			if (path == "/.new") {
+				if ((Directory_service::OPEN_MODE_ACCMODE & mode) == Directory_service::OPEN_MODE_WRONLY)
+					return Open_result::OPEN_ERR_NO_PERM;
+				*handle = new (alloc)
+					New_pipe_handle(*this, alloc, mode, _pipe_space, _notify_cap);
+				return Open_result::OPEN_OK;
+			}
+
+			return File_system::open(cpath, mode, handle, alloc);
+		}
+
+		Stat_result stat(const char *cpath, Stat &out) override
+		{
+			out = Stat { };
+			Path const path { cpath };
+
+			if (path == "/.new") {
+				out = Stat {
+					.size              = 1,
+					.type              = Node_type::TRANSACTIONAL_FILE,
+					.rwx               = Node_rwx::wo(),
+					.inode             = Genode::addr_t(this),
+					.device            = Genode::addr_t(this),
+					.modification_time = { }
+				};
+				return STAT_OK;
+			}
+
+			return File_system::stat(cpath, out);
+		}
+
+		bool directory(char const *cpath) override
+		{
+			Path const path { cpath };
+			if (path == "/.new")
+				return false;
+
+			return File_system::directory(cpath);
+		}
+
+		const char* leaf_path(const char *cpath) override
+		{
+			Path path { cpath };
+			if (path == "/.new")
+				return cpath;
+
+			return File_system::leaf_path(cpath);
+		}
+};
+
+
 class Vfs_pipe::Fifo_file_system : public Vfs_pipe::File_system
 {
 	private:
@@ -650,7 +705,7 @@ class Vfs_pipe::Fifo_file_system : public Vfs_pipe::File_system
 
 		virtual bool _pipe_id(const char* cpath, Pipe_space::Id &id) const override
 		{
-			bool result = false;
+			bool result { false };
 			_items.for_each([&cpath, &id, &result] (Fifo_item const &item) {
 				if (item.path == Path(cpath)) {
 					id = item.id;
@@ -667,7 +722,7 @@ class Vfs_pipe::Fifo_file_system : public Vfs_pipe::File_system
 			File_system(env), _env(env)
 		{
 			config.for_each_sub_node("fifo", [&env, this] (Xml_node const &fifo) {
-				auto path = fifo.attribute_value("name", Genode::String<MAX_PATH_LENGTH>());
+				Path const path { fifo.attribute_value("name", String<MAX_PATH_LENGTH>()) };
 
 				Pipe* pipe = new (env.alloc())
 					Pipe(env.alloc(), _pipe_space, _notify_cap);
@@ -689,98 +744,6 @@ class Vfs_pipe::Fifo_file_system : public Vfs_pipe::File_system
 			});
 		}
 
-		virtual Open_result open(const char *cpath,
-		                         unsigned mode,
-		                         Vfs::Vfs_handle **handle,
-		                         Genode::Allocator &alloc) override
-		{
-			if (mode & OPEN_MODE_CREATE) {
-				Genode::warning("cannot open fifo pipe with OPEN_MODE_CREATE");
-				return OPEN_ERR_NO_PERM;
-			}
-
-			Path const path { cpath };
-			if (!path.has_single_element())
-				return Open_result::OPEN_ERR_UNACCESSIBLE;
-
-			if (!((mode == Open_mode::OPEN_MODE_RDONLY) ||
-			      (mode == Open_mode::OPEN_MODE_WRONLY))) {
-				Genode::error("fifo pipe only supports opening with WO or RO mode");
-				return Open_result::OPEN_ERR_UNACCESSIBLE;
-			}
-
-			Pipe_space::Id id { ~0UL };
-			Open_result result { Open_result::OPEN_ERR_UNACCESSIBLE };
-			if (_pipe_id(cpath, id)) {
-				_try_apply(id, [&mode, &result, this, &handle, &alloc] (Pipe &pipe) {
-					auto type { (mode == Open_mode::OPEN_MODE_RDONLY) ? "/out" : "/in" };
-					result = pipe.open(*this, type, handle, alloc);
-				});
-			}
-
-			return result;
-		}
-
-		Stat_result stat(const char *cpath, Stat &out) override
-		{
-			out = Stat { };
-			Stat_result result { STAT_ERR_NO_ENTRY };
-			Path const path { cpath };
-
-			if (path.has_single_element()) {
-				Pipe_space::Id id { ~0UL };
-				if (_pipe_id(cpath, id)) {
-					_try_apply(id, [&out, &result, this] (Pipe &pipe) {
-						out = Stat {
-							.size              = file_size(0),
-							.type              = Node_type::CONTINUOUS_FILE,
-							.rwx               = Node_rwx::rw(),
-							.inode             = Genode::addr_t(&pipe),
-							.device            = Genode::addr_t(this),
-							.modification_time = { }
-						};
-						result = STAT_OK;
-					});
-				}
-			}
-
-			return result;
-		}
-
-		bool directory(char const *cpath) override
-		{
-			Path const path { cpath };
-			if (path == "/") return true;
-			if (!path.has_single_element()) return false;
-
-			bool result { true };
-			Pipe_space::Id id { ~0UL };
-			if (_pipe_id(cpath, id)) {
-				_try_apply(id, [&result, &cpath] (Pipe &) {
-					result = false;
-				});
-			}
-
-			return result;
-		}
-
-		char const *leaf_path(char const *cpath) override
-		{
-			Path path { cpath };
-			if (path == "/") return cpath;
-			if (!path.has_single_element()) return nullptr;
-
-			char const *result { nullptr };
-			Pipe_space::Id id { ~0UL };
-			if (_pipe_id(path.last_element(), id)) {
-				_try_apply(id, [&result, &cpath] (Pipe &) {
-					result = cpath;
-				});
-			}
-
-			return result;
-		}
-
 };
 
 
@@ -793,7 +756,7 @@ extern "C" Vfs::File_system_factory *vfs_file_system_factory(void)
 			if (node.has_sub_node("fifo")) {
 				return new (env.alloc()) Vfs_pipe::Fifo_file_system(env, node);
 			} else {
-				return new (env.alloc()) Vfs_pipe::File_system(env);
+				return new (env.alloc()) Vfs_pipe::Pipe_file_system(env);
 			}
 		}
 	};
