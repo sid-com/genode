@@ -35,8 +35,8 @@ namespace Test_fifo_pipe {
 	class Test;
 	class Echo;
 	static char const*  TEST_DATA_FILENAME  { "/ro/test-data.bin" };
-	static char const*  SEND_FILENAME       { "/dev/writer/upstream" };
-	static char const*  RECEIVE_FILENAME    { "/dev/reader/downstream" };
+ 	static char const*  SEND_FILENAME       { "/dev/upstream" };
+ 	static char const*  RECEIVE_FILENAME    { "/dev/downstream" };
 	enum { BUF_SIZE = 4*1024 };
 }
 
@@ -246,17 +246,21 @@ class Test_fifo_pipe::Test
 
 		void access_control()
 		{
+			log("test access control");
 			Libc::with_libc([this] () {
-				int send_file = open(SEND_FILENAME, O_RDONLY);
+				bool failed { false };
+				int send_file { open(SEND_FILENAME, O_RDONLY) };
 				if (send_file >= 0) {
 					error("should not have read access to ", SEND_FILENAME);
-					exit(-1);
+					failed = true;
 				}
-				int receive_file = open(RECEIVE_FILENAME, O_WRONLY);
+				int receive_file { open(RECEIVE_FILENAME, O_WRONLY) };
 				if (receive_file >= 0) {
 					error("should not have write access to ", RECEIVE_FILENAME);
-					exit(-1);
+					failed = true;
 				}
+				if (failed) 
+					exit(-1);
 			});
 		}
 };

@@ -43,10 +43,10 @@
 						<fifo name="downstream"/>
 					</pipe>
 				</vfs>
-				<policy label="init -> echo -> upstream" root="/.out" writeable="no" />
-				<policy label="init -> echo -> downstream" root="/.in" writeable="yes" />
-				<policy label="fifo-pipe-test -> upstream" root="/.in" writeable="yes" />
-				<policy label="fifo-pipe-test -> downstream" root="/.out" writeable="no" />
+				<policy label="init -> echo -> upstream" root="/upstream/.out" writeable="no" />
+				<policy label="init -> echo -> downstream" root="/downstream/.in" writeable="yes" />
+				<policy label="fifo-pipe-test -> upstream" root="/upstream/.in" writeable="yes" />
+				<policy label="fifo-pipe-test -> downstream" root="/downstream/.out" writeable="no" />
 			</config>
 		</start>
 
@@ -127,8 +127,8 @@
 						<rom name="test-data.bin"/>
 					</dir>
 					<dir name="dev">
-						<dir name="writer"> <fs label="upstream"/> </dir>
-						<dir name="reader"> <fs label="downstream"/> </dir>
+						<fs label="upstream"/>
+						<fs label="downstream"/>
 						<log/>
 					</dir>
 				</vfs>

@@ -332,8 +332,12 @@ class Vfs_pipe::File_system : public Vfs::File_system
 				pipe.notify(); });
 		}
 
-		virtual bool _pipe_id(const char* cpath, Pipe_space::Id &id) const = 0;
+		/*
+		 * verifies if a path meets access control requirements
+		 */
+		virtual bool _valid_path(const char* cpath) const = 0;
 
+		virtual bool _pipe_id(const char* cpath, Pipe_space::Id &id) const = 0;
 
 		template <typename FN>
 		void _try_apply(Pipe_space::Id id, FN const &fn)
@@ -372,9 +376,12 @@ class Vfs_pipe::File_system : public Vfs::File_system
 
 			if (!((mode == Open_mode::OPEN_MODE_RDONLY) ||
 			      (mode == Open_mode::OPEN_MODE_WRONLY))) {
-				Genode::error("fifo pipe only supports opening with WO or RO mode");
-				return Open_result::OPEN_ERR_UNACCESSIBLE;
+				Genode::error("pipe only supports opening with WO or RO mode");
+				return OPEN_ERR_NO_PERM;
 			}
+
+			if (!_valid_path(cpath))
+				return OPEN_ERR_UNACCESSIBLE;
 
 			Path const path { cpath };
 			if (!path.has_single_element()) {
@@ -387,18 +394,16 @@ class Vfs_pipe::File_system : public Vfs::File_system
 				io.keep_only_last_element();
 
 				if (io == "/.in" && mode != Open_mode::OPEN_MODE_WRONLY)
-					return Open_result::OPEN_ERR_UNACCESSIBLE;
+					return OPEN_ERR_NO_PERM;
 				if (io == "/.out" && mode != Open_mode::OPEN_MODE_RDONLY)
-					return Open_result::OPEN_ERR_UNACCESSIBLE;
-				if (!(io == "/.in" || io == "/.out"))
-					return Open_result::OPEN_ERR_UNACCESSIBLE;
+					return OPEN_ERR_NO_PERM;
 			}
 
-			auto result { Open_result::OPEN_ERR_UNACCESSIBLE };
+			auto result { OPEN_ERR_UNACCESSIBLE };
 			Pipe_space::Id id { ~0UL };
 			if (_pipe_id(path.last_element(), id)) {
 				_try_apply(id, [&mode, &result, this, &handle, &alloc] (Pipe &pipe) {
-					auto type { (mode == Open_mode::OPEN_MODE_RDONLY) ? "/.out" : "/.in" };
+					auto const type { (mode == OPEN_MODE_RDONLY) ? "/.out" : "/.in" };
 					result = pipe.open(*this, type, handle, alloc);
 				});
 			}
@@ -414,8 +419,10 @@ class Vfs_pipe::File_system : public Vfs::File_system
 			if (create)
 				return OPENDIR_ERR_PERMISSION_DENIED;
 
-			Path const path { cpath };
-			if (path == "/" || path == "/.in" || path == "/.out") {
+			Path io { cpath };
+			bool const root_dir { io == "/" };
+			io.keep_only_last_element();
+			if (root_dir || io == "/.in" || io == "/.out") {
 				*handle = new (alloc)
 					Vfs_handle(*this, *this, alloc, 0);
 				return OPENDIR_OK;
@@ -448,6 +455,10 @@ class Vfs_pipe::File_system : public Vfs::File_system
 		Stat_result stat(const char *cpath, Stat &out) override
 		{
 			out = Stat { };
+
+			if (!_valid_path(cpath))
+				return STAT_ERR_NO_ENTRY;
+
 			Stat_result result { STAT_ERR_NO_ENTRY };
 			Path const path { cpath };
 
@@ -517,8 +528,10 @@ class Vfs_pipe::File_system : public Vfs::File_system
 		{
 			Path const path { cpath };
 			if (path == "/") return true;
-			if (path == "/.in") return true;
-			if (path == "/.out") return true;
+			Path io { cpath };
+			io.keep_only_last_element();
+			if (io == "/.in") return true;
+			if (io == "/.out") return true;
 			if (!path.has_single_element()) return false;
 
 			bool result { true };
@@ -535,16 +548,11 @@ class Vfs_pipe::File_system : public Vfs::File_system
 		const char* leaf_path(const char *cpath) override
 		{
 			Path const path { cpath };
-			if (path == "/") return cpath;
+			if (path == "/")
+				return cpath;
 
-			if (!path.has_single_element()) {
-				/* find out if the second to last element is "/.in" or "/.out" */
-				Path io { cpath };
-				io.strip_last_element();
-				io.keep_only_last_element();
-				if (!(io == "/.in" || io == "/.out"))
-					return nullptr;
-			}
+			if (!_valid_path(cpath))
+				return nullptr;
 
 			char const *result { nullptr };
 			Pipe_space::Id id { ~0UL };
@@ -615,6 +623,23 @@ class Vfs_pipe::Pipe_file_system : public Vfs_pipe::File_system
 		virtual bool _pipe_id(const char* cpath, Pipe_space::Id &id) const override
 		{
 			return 0 != ascii_to(cpath, id.value);
+		}
+
+		bool _valid_path(const char *cpath) const  override
+		{
+			/*
+			 *  a pipe path is either
+			 * "/.in/pipenumber"
+			 * or
+			 * "/.out/pipenumber"
+			 */
+			Path io { cpath };
+			io.strip_last_element();
+			io.keep_only_last_element();
+			if ((io == "/.in" || io == "/.out"))
+				return true;
+
+			return false;
 		}
 
 	public:
@@ -702,6 +727,41 @@ class Vfs_pipe::Fifo_file_system : public Vfs_pipe::File_system
 		Genode::Registry<Fifo_item>  _items { };
 
 	protected:
+
+		bool _valid_path(const char *cpath) const  override
+		{
+			/*
+			 * either we have no access control (single file in path)
+			 * or we need to verify access control
+			 */
+			Path io { cpath };
+			if (io.has_single_element()) {
+				return true;
+			} else {
+				/*
+				 * a valid access control path is either
+				 * "/pipename/.in/pipename"
+				 * or
+				 * "/pipename/.out/pipename"
+				 */
+				io.strip_last_element();
+				io.keep_only_last_element();
+				if (!(io == "/.in" || io == "/.out"))
+					return false;
+
+				Path pipe_dir { cpath };
+				pipe_dir.strip_last_element();
+				pipe_dir.strip_last_element();
+
+				Path pipe_file { cpath };
+				pipe_file.keep_only_last_element();
+
+				if (pipe_dir == pipe_file)
+					return true;
+
+				return false;
+			}
+		}
 
 		virtual bool _pipe_id(const char* cpath, Pipe_space::Id &id) const override
 		{
