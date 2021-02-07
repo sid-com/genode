@@ -153,7 +153,7 @@ struct Vfs_pipe::Pipe
 	}
 
 	/**
-	 * Remove "/.new" handle reference
+	 * Remove "/new" handle reference
 	 */
 	void remove_new_handle() {
 		new_handle_active = false; }
@@ -177,7 +177,7 @@ struct Vfs_pipe::Pipe
 	                 Vfs::Vfs_handle **handle,
 	                 Genode::Allocator &alloc)
 	{
-		if (filename == "/.in") {
+		if (filename == "/in") {
 
 			if (0 == num_writers) {
 				/* flush buffer */
@@ -194,7 +194,7 @@ struct Vfs_pipe::Pipe
 			return Open_result::OPEN_OK;
 		}
 
-		if (filename == "/.out") {
+		if (filename == "/out") {
 			*handle = new (alloc)
 				Pipe_handle(fs, alloc, Directory_service::OPEN_MODE_RDONLY, registry, *this);
 
@@ -348,6 +348,8 @@ class Vfs_pipe::File_system : public Vfs::File_system
 			catch (Pipe_space::Unknown_id) { }
 		}
 
+
+
 	public:
 
 		File_system(Vfs::Env &env)
@@ -388,24 +390,23 @@ class Vfs_pipe::File_system : public Vfs::File_system
 			Path const path { cpath };
 			if (!path.has_single_element()) {
 				/*
-				 * find out if the second to last element is "/.in" or "/.out"
+				 * find out if the last element is "/in" or "/out"
 				 * and enforce read/write policy
 				 */
 				Path io { cpath };
-				io.strip_last_element();
 				io.keep_only_last_element();
 
-				if (io == "/.in" && mode != Open_mode::OPEN_MODE_WRONLY)
+				if (io == "/in" && mode != Open_mode::OPEN_MODE_WRONLY)
 					return OPEN_ERR_NO_PERM;
-				if (io == "/.out" && mode != Open_mode::OPEN_MODE_RDONLY)
+				if (io == "/out" && mode != Open_mode::OPEN_MODE_RDONLY)
 					return OPEN_ERR_NO_PERM;
 			}
 
 			auto result { OPEN_ERR_UNACCESSIBLE };
 			Pipe_space::Id id { ~0UL };
-			if (_pipe_id(path.last_element(), id)) {
+			if (_pipe_id(cpath, id)) {
 				_try_apply(id, [&mode, &result, this, &handle, &alloc] (Pipe &pipe) {
-					auto const type { (mode == OPEN_MODE_RDONLY) ? "/.out" : "/.in" };
+					auto const type { (mode == OPEN_MODE_RDONLY) ? "/out" : "/in" };
 					result = pipe.open(*this, type, handle, alloc);
 				});
 			}
@@ -422,14 +423,26 @@ class Vfs_pipe::File_system : public Vfs::File_system
 				return OPENDIR_ERR_PERMISSION_DENIED;
 
 			Path io { cpath };
-			bool const root_dir { io == "/" };
-			io.keep_only_last_element();
-			if (root_dir || io == "/.in" || io == "/.out") {
+			if (io == "/") {
 				*handle = new (alloc)
 					Vfs_handle(*this, *this, alloc, 0);
 				return OPENDIR_OK;
 			}
-			return OPENDIR_ERR_PERMISSION_DENIED;
+
+			auto result { OPENDIR_ERR_PERMISSION_DENIED };
+			/* create a path that matches with _pipe_id() */
+			Path pseudo_path { cpath };
+			io.keep_only_last_element();
+			pseudo_path.append(io.string());
+			Pipe_space::Id id { ~0UL };
+			if (_pipe_id(pseudo_path.string(), id)) {
+				_try_apply(id, [&handle, &alloc, this, &result] (Pipe &/*pipe*/) {
+					*handle = new (alloc)
+						Vfs_handle(*this, *this, alloc, 0);
+					result = OPENDIR_OK;
+				});
+			}
+			return result;
 		}
 
 		void close(Vfs::Vfs_handle *vfs_handle) override
@@ -480,15 +493,14 @@ class Vfs_pipe::File_system : public Vfs::File_system
 					});
 				}
 			} else {
-				/* find out if the second to last element is "/.in" or "/.out" */
+				/* find out if the last element is "/in" or "/out" */
 				Path io { cpath };
-				io.strip_last_element();
 				io.keep_only_last_element();
 
 				Pipe_space::Id id { ~0UL };
-				if (_pipe_id(path.last_element(), id)) {
+				if (_pipe_id(cpath, id)) {
 					_try_apply(id, [&io, &out, this, &result] (Pipe const &pipe) {
-						if (io == "/.in") {
+						if (io == "/in") {
 							out = Stat {
 								.size              = file_size(pipe.buffer.avail_capacity()),
 								.type              = Node_type::CONTINUOUS_FILE,
@@ -499,7 +511,7 @@ class Vfs_pipe::File_system : public Vfs::File_system
 							};
 							result = STAT_OK;
 						} else
-						if (io == "/.out") {
+						if (io == "/out") {
 							out = Stat {
 								.size              = file_size(PIPE_BUF_SIZE
 								                             - pipe.buffer.avail_capacity()),
@@ -526,27 +538,6 @@ class Vfs_pipe::File_system : public Vfs::File_system
 
 		file_size num_dirent(char const *) override { return 0; }
 
-		bool directory(char const *cpath) override
-		{
-			Path const path { cpath };
-			if (path == "/") return true;
-			Path io { cpath };
-			io.keep_only_last_element();
-			if (io == "/.in") return true;
-			if (io == "/.out") return true;
-			if (!path.has_single_element()) return false;
-
-			bool result { true };
-			Pipe_space::Id id { ~0UL };
-			if (_pipe_id(cpath, id)) {
-				_try_apply(id, [&result] (Pipe &) {
-					result = false;
-				});
-			}
-
-			return result;
-		}
-
 		const char* leaf_path(const char *cpath) override
 		{
 			Path const path { cpath };
@@ -558,7 +549,7 @@ class Vfs_pipe::File_system : public Vfs::File_system
 
 			char const *result { nullptr };
 			Pipe_space::Id id { ~0UL };
-			if (_pipe_id(path.last_element(), id)) {
+			if (_pipe_id(cpath, id)) {
 				_try_apply(id, [&result, &cpath] (Pipe &) {
 					result = cpath;
 				});
@@ -624,21 +615,22 @@ class Vfs_pipe::Pipe_file_system : public Vfs_pipe::File_system
 
 		virtual bool _pipe_id(const char* cpath, Pipe_space::Id &id) const override
 		{
-			return 0 != ascii_to(cpath, id.value);
+			Path pipe_name { cpath };
+			pipe_name.strip_last_element();
+			return 0 != ascii_to(pipe_name.base() + 1, id.value);
 		}
 
 		bool _valid_path(const char *cpath) const  override
 		{
 			/*
 			 *  a pipe path is either
-			 * "/.in/pipenumber"
+			 * "/pipenumber/in"
 			 * or
-			 * "/.out/pipenumber"
+			 * "/pipenumber/out"
 			 */
 			Path io { cpath };
-			io.strip_last_element();
 			io.keep_only_last_element();
-			if ((io == "/.in" || io == "/.out"))
+			if ((io == "/in" || io == "/out"))
 				return true;
 
 			return false;
@@ -658,12 +650,12 @@ class Vfs_pipe::Pipe_file_system : public Vfs_pipe::File_system
 		{
 			Path const path { cpath };
 
-			if (path == "/.new") {
-				if ((Directory_service::OPEN_MODE_ACCMODE & mode) == Directory_service::OPEN_MODE_WRONLY)
-					return Open_result::OPEN_ERR_NO_PERM;
+			if (path == "/new") {
+				if ((OPEN_MODE_ACCMODE & mode) == OPEN_MODE_WRONLY)
+					return OPEN_ERR_NO_PERM;
 				*handle = new (alloc)
 					New_pipe_handle(*this, _env.env(), alloc, mode, _pipe_space);
-				return Open_result::OPEN_OK;
+				return OPEN_OK;
 			}
 
 			return File_system::open(cpath, mode, handle, alloc);
@@ -674,7 +666,7 @@ class Vfs_pipe::Pipe_file_system : public Vfs_pipe::File_system
 			out = Stat { };
 			Path const path { cpath };
 
-			if (path == "/.new") {
+			if (path == "/new") {
 				out = Stat {
 					.size              = 1,
 					.type              = Node_type::TRANSACTIONAL_FILE,
@@ -692,16 +684,27 @@ class Vfs_pipe::Pipe_file_system : public Vfs_pipe::File_system
 		bool directory(char const *cpath) override
 		{
 			Path const path { cpath };
-			if (path == "/.new")
-				return false;
+			if (path == "/") return true;
+			if (path == "/new") return false;
 
-			return File_system::directory(cpath);
+			if (_valid_path(cpath)) return false;
+			if (!path.has_single_element()) return false;
+
+			bool result { true };
+			Pipe_space::Id id { ~0UL };
+			if (_pipe_id(cpath, id)) {
+				_try_apply(id, [&result] (Pipe &) {
+					result = false;
+				});
+			}
+
+			return result;
 		}
 
 		const char* leaf_path(const char *cpath) override
 		{
 			Path path { cpath };
-			if (path == "/.new")
+			if (path == "/new")
 				return cpath;
 
 			return File_system::leaf_path(cpath);
@@ -719,7 +722,8 @@ class Vfs_pipe::Fifo_file_system : public Vfs_pipe::File_system
 			Path const path;
 			Pipe_space::Id const id;
 
-			Fifo_item(Genode::Registry<Fifo_item> &registry, Path const &path, Pipe_space::Id const &id)
+			Fifo_item(Genode::Registry<Fifo_item> &registry,
+			          Path const &path, Pipe_space::Id const &id)
 			:
 				_element(registry, *this), path(path), id(id)
 			{ }
@@ -741,23 +745,24 @@ class Vfs_pipe::Fifo_file_system : public Vfs_pipe::File_system
 			} else {
 				/*
 				 * a valid access control path is either
-				 * "/pipename/.in/pipename"
+				 * "/.pipename/in/in"
 				 * or
-				 * "/pipename/.out/pipename"
+				 * "/.pipename/out/out"
 				 */
-				io.strip_last_element();
-				io.keep_only_last_element();
-				if (!(io == "/.in" || io == "/.out"))
+				if (io.base()[1] != '.')
 					return false;
 
-				Path pipe_dir { cpath };
-				pipe_dir.strip_last_element();
-				pipe_dir.strip_last_element();
+				io.strip_last_element();
+				if (io.has_single_element())
+					return false;
 
-				Path pipe_file { cpath };
-				pipe_file.keep_only_last_element();
+				io.keep_only_last_element();
+				if (!(io == "/in" || io == "/out"))
+					return false;
 
-				if (pipe_dir == pipe_file)
+				Path io_file { cpath };
+				io_file.keep_only_last_element();
+				if (io_file == io)
 					return true;
 
 				return false;
@@ -766,9 +771,18 @@ class Vfs_pipe::Fifo_file_system : public Vfs_pipe::File_system
 
 		virtual bool _pipe_id(const char* cpath, Pipe_space::Id &id) const override
 		{
+			Path path { cpath };
+			if (!path.has_single_element()) {
+				/* remove /in/in or /out/out */
+				path.strip_last_element();
+				path.strip_last_element();
+				/* remove the "." from /.pipe_name */
+				path = Path { path.base() + 2 };
+			}
+
 			bool result { false };
-			_items.for_each([&cpath, &id, &result] (Fifo_item const &item) {
-				if (item.path == Path(cpath)) {
+			_items.for_each([&path, &id, &result] (Fifo_item const &item) {
+				if (item.path == path) {
 					id = item.id;
 					result = true;
 				}
@@ -803,6 +817,21 @@ class Vfs_pipe::Fifo_file_system : public Vfs_pipe::File_system
 			_items.for_each([this] (Fifo_item &item) {
 				destroy(_env.alloc(), &item);
 			});
+		}
+
+		bool directory(char const *cpath) override
+		{
+			Path const path { cpath };
+			if (path == "/") return true;
+			if (_valid_path(cpath)) return false;
+
+			Path io { cpath };
+			io.keep_only_last_element();
+			if (io == "/in") return true;
+			if (io == "/out") return true;
+			if (!path.has_single_element()) return false;
+
+			return false;
 		}
 
 };

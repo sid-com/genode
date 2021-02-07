@@ -2022,11 +2022,10 @@ int Libc::Vfs_plugin::pipe(Libc::File_descriptor *pipefdo[2])
 	}
 
 	Libc::File_descriptor *meta_fd { nullptr };
-	char pipe_name[32] { };
 
 	{
 		Absolute_path new_path = base_path;
-		new_path.append("/.new");
+		new_path.append("/new");
 
 		meta_fd = open(new_path.base(), O_RDONLY);
 		if (!meta_fd) {
@@ -2035,22 +2034,22 @@ int Libc::Vfs_plugin::pipe(Libc::File_descriptor *pipefdo[2])
 		}
 		meta_fd->path(new_path.string());
 
-		/* get the pipe name */
-		int const n = read(meta_fd, pipe_name, sizeof(pipe_name)-1);
+		char buf[32] { };
+		int const n = read(meta_fd, buf, sizeof(buf)-1);
 		if (n < 1) {
 			error("failed to read pipe at ", new_path);
 			close(meta_fd);
 			return Errno(EACCES);
 		}
-		pipe_name[n] = '\0';
+		buf[n] = '\0';
+		base_path.append("/");
+		base_path.append(buf);
 	}
 
 	auto open_pipe_fd = [&] (auto path_suffix, auto flags)
 	{
 		Absolute_path path = base_path;
 		path.append(path_suffix);
-		path.append("/");
-		path.append(pipe_name);
 
 		File_descriptor *fd = open(path.base(), flags);
 		if (!fd)
@@ -2061,8 +2060,8 @@ int Libc::Vfs_plugin::pipe(Libc::File_descriptor *pipefdo[2])
 		return fd;
 	};
 
-	pipefdo[0] = open_pipe_fd("/.out", O_RDONLY);
-	pipefdo[1] = open_pipe_fd("/.in",  O_WRONLY);
+	pipefdo[0] = open_pipe_fd("/out", O_RDONLY);
+	pipefdo[1] = open_pipe_fd("/in",  O_WRONLY);
 
 	close(meta_fd);
 

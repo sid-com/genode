@@ -25,6 +25,7 @@
 			<service name="PD"/>
 			<service name="RM"/>
 			<service name="ROM"/>
+			<service name="Timer"/>
 		</parent-provides>
 		<default-route>
 			<any-service> <parent/> <any-child/> </any-service>
@@ -43,10 +44,9 @@
 						<fifo name="downstream"/>
 					</pipe>
 				</vfs>
-				<policy label="init -> echo -> upstream" root="/upstream/.out" writeable="no" />
-				<policy label="init -> echo -> downstream" root="/downstream/.in" writeable="yes" />
-				<policy label="fifo-pipe-test -> upstream" root="/upstream/.in" writeable="yes" />
-				<policy label="fifo-pipe-test -> downstream" root="/downstream/.out" writeable="no" />
+				<policy label="fifo-pipe-test -> in" root="/.upstream/in" writeable="yes" />
+				<policy label="fifo-pipe-test -> out" root="/.downstream/out" writeable="no" />
+				<default-policy root="/" writeable="yes"/>
 			</config>
 		</start>
 
@@ -77,8 +77,8 @@
 								<config type="echo">
 									<vfs>
 										<dir name="dev">
-												<fs label="downstream"/>
-												<fs label="upstream"/>
+											<fs label="downstream"/>
+											<fs label="upstream"/>
 											<log/>
 										</dir>
 									</vfs>
@@ -121,14 +121,18 @@
 		<start name="fifo-pipe-test">
 			<binary name="test-libc_fifo_pipe"/>
 			<resource name="RAM" quantum="8M"/>
-			<config iterations="10">
+			<config iterations="20">
 				<vfs>
 					<dir name="ro">
 						<rom name="test-data.bin"/>
 					</dir>
 					<dir name="dev">
-						<fs label="upstream"/>
-						<fs label="downstream"/>
+						<dir name="send-pipe">
+							<fs label="in"/>
+						</dir>
+						<dir name="receive-pipe">
+							<fs label="out"/>
+						</dir>
 						<log/>
 					</dir>
 				</vfs>
