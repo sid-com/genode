@@ -348,8 +348,6 @@ class Vfs_pipe::File_system : public Vfs::File_system
 			catch (Pipe_space::Unknown_id) { }
 		}
 
-
-
 	public:
 
 		File_system(Vfs::Env &env)
@@ -623,10 +621,10 @@ class Vfs_pipe::Pipe_file_system : public Vfs_pipe::File_system
 		bool _valid_path(const char *cpath) const  override
 		{
 			/*
-			 *  a pipe path is either
-			 * "/pipenumber/in"
+			 * a pipe path is either
+			 * "/pipe_number/in"
 			 * or
-			 * "/pipenumber/out"
+			 * "/pipe_number/out"
 			 */
 			Path io { cpath };
 			io.keep_only_last_element();
@@ -777,6 +775,8 @@ class Vfs_pipe::Fifo_file_system : public Vfs_pipe::File_system
 				path.strip_last_element();
 				path.strip_last_element();
 				/* remove the "." from /.pipe_name */
+				if (strlen(path.base()) <= 2)
+					return false;
 				path = Path { path.base() + 2 };
 			}
 
