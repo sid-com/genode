@@ -188,10 +188,17 @@ _svn_dir = $(call _assert,$(DIR($1)),Missing declaration of DIR($*))
 
 _file_name = $(call _prefer,$(NAME($1)),$(notdir $(URL($1))))
 
+#
 # Some downloads are available via HTTPS only, but wget < 3.14 does not support
 # server-name identification, which is used by some sites. So, we disable
 # certificate checking in wget and check the validity of the download via SIG
 # or SHA.
+#
+# Successful and integrity-checked downloads are cached at the
+# GENODE_CONTRIB_CACHE directory. The combination of 'cp' and 'mv' when
+# populating the cache prevents corrupted files in the cache when the disk is
+# full.
+#
 
 %.file:
 	$(VERBOSE)test -n "$(URL($*))" ||\
@@ -207,7 +214,7 @@ _file_name = $(call _prefer,$(NAME($1)),$(notdir $(URL($1))))
 		sha256sum -c > /dev/null 2> /dev/null) || \
 			($(ECHO) Error: Hash sum check for $* failed; false)
 	$(VERBOSE)name=$(call _file_name,$*); cached_name=$(GENODE_CONTRIB_CACHE)/$(SHA($*))_$$name; \
-		(test -d $(GENODE_CONTRIB_CACHE) || mkdir -p $(GENODE_CONTRIB_CACHE)); \
+		mkdir -p $(GENODE_CONTRIB_CACHE); \
 		(test -f $$cached_name || (cp $$name $$cached_name.tmp && mv $$cached_name.tmp $$cached_name))
 
 
