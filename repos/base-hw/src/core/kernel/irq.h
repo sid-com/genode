@@ -156,7 +156,6 @@ class Kernel::User_irq : public Kernel::Irq
 		 */
 		void occurred() override
 		{
-			//Genode::raw(__func__, " called");
 			if (_context.can_submit(1)) {
 				_context.submit(1);
 			}

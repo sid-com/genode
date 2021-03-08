@@ -32,7 +32,6 @@ void Thread::exception(Cpu & cpu)
 		if (regs->irq() == cpu.timer().interrupt_id()) {
 			cpu.interrupt(cpu.timer().interrupt_id());
 		} else {
-			//Genode::raw("irq: ", regs->irq());
 			/* interrupt controller */
 			_interrupt(0);
 		}
