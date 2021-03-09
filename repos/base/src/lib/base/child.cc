@@ -925,8 +925,11 @@ void Child::close_all_sessions()
 	auto close_fn = [&] (Session_state &session) {
 		session.closed_callback = nullptr;
 		session.ready_callback  = nullptr;
-		(void)_close(session);
-		session.discard_id_at_client();
+
+		Close_result const close_result = _close(session);
+
+		if (close_result == CLOSE_PENDING)
+			session.discard_id_at_client();
 	};
 
 	while (_id_space.apply_any<Session_state>(close_fn));
