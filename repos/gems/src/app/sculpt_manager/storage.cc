@@ -25,7 +25,8 @@ void Sculpt::Storage::handle_storage_devices_update()
 
 		dev.process_part_block_report();
 
-		if (dev.state != orig_state)
+		if (dev.state != orig_state
+		 || dev.state == Storage_device::UNKNOWN)
 			reconfigure_runtime = true;
 	};
 
