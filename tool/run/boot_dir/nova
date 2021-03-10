@@ -67,7 +67,6 @@ proc run_boot_dir {binaries} {
 	#
 	# Enable Intel HWP unconditionally
 	#
-	puts "Instruct Bender to initialize Intel HWP"
 	append options_bender " intel_hwp"
 
 	if {[apply_microcode]} {
