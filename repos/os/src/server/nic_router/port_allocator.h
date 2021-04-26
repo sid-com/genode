@@ -38,13 +38,16 @@ class Net::Port_allocator
 
 	private:
 
-		Genode::Bit_allocator<COUNT> _alloc { };
+		using Num_allocator = Genode::Bit_allocator<COUNT>;
+
+		Num_allocator _alloc { };
 
 	public:
 
 		struct Allocation_conflict : Genode::Exception { };
+		struct Out_of_indices      : Genode::Exception { };
 
-		Port alloc() { return Port(_alloc.alloc() + FIRST); }
+		Port alloc();
 
 		void alloc(Port const port);
 
