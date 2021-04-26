@@ -25,6 +25,36 @@ bool Net::dynamic_port(Port const port) {
 	return port.value >= Port_allocator::FIRST; }
 
 
+/********************************
+ ** Monotonic_number_allocator **
+ ********************************/
+
+template<uint16_t MAX>
+uint16_t Monotonic_number_allocator<MAX>::alloc()
+{
+	for (uint16_t count = 0; count < MAX; ++count) {
+		uint16_t const current = _next;
+		_next = (_next + 1) % MAX;
+		try {
+			_alloc.alloc_addr(current);
+			return current;
+		} catch (typename Bit_alloc::Range_conflict) {
+			continue;
+		}
+	}
+	throw Out_of_indices();
+}
+
+
+template<uint16_t MAX>
+void Monotonic_number_allocator<MAX>::alloc_addr(uint16_t number)
+{
+	try { _alloc.alloc_addr(number); }
+	catch (typename Bit_alloc::Range_conflict) {
+		throw Range_conflict(); }
+}
+
+
 /********************
  ** Port_allocator **
  ********************/
