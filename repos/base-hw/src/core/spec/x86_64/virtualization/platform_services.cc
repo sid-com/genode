@@ -30,7 +30,7 @@ void Core::platform_add_local_services(Rpc_entrypoint         &ep,
                                        Sliced_heap            &sliced_heap,
                                        Registry<Service>      &local_services,
                                        Trace::Source_registry &trace_sources,
-                                       Ram_allocator &)
+                                       Ram_allocator          &)
 {
 	static Io_port_root io_port_root(*core_env().pd_session(),
 	                                 platform().io_port_alloc(), sliced_heap);
