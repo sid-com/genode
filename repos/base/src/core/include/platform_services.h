@@ -40,7 +40,7 @@ namespace Core {
 	                                 Sliced_heap            &md,
 	                                 Registry<Service>      &reg,
 	                                 Trace::Source_registry &trace,
-					 Ram_allocator          &core_ram_alloc);
+	                                 Ram_allocator          &core_ram_alloc);
 }
 
 #endif /* _CORE__INCLUDE__PLATFORM_SERVICES_H_ */
