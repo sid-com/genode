@@ -41,6 +41,7 @@ enum Action {
 	ACTION_NEW_CONFIG   = 4,
 	ACTION_READ_CONFIG  = 5,
 	ACTION_HOTPLUG      = 6,
+	ACTION_EXIT         = 7,
 	ACTION_FAILED       = 9,
 };
 

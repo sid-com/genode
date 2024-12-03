@@ -74,6 +74,7 @@ struct Framebuffer::Driver
 		case ACTION_NEW_CONFIG   : return "NEW_CONFIG";
 		case ACTION_READ_CONFIG  : return "READ_CONFIG";
 		case ACTION_HOTPLUG      : return "HOTPLUG";
+		case ACTION_EXIT         : return "EXIT";
 		case ACTION_FAILED       : return "FAILED";
 		}
 		return "UNKNOWN";
@@ -607,7 +608,8 @@ void lx_emul_i915_framebuffer_ready(unsigned const connector_id,
 			lx_emul_i915_wakeup(unsigned(id.value));
 		} else
 			if (drv.verbose)
-				log(space, label, ": capture closed ");
+				log(space, label, ": capture closed ",
+				    merge ? "(was mirror capture)" : "");
 
 	}, [](){ /* unknown id */ });
 }
@@ -646,6 +648,9 @@ int lx_emul_i915_action_to_process(int const action_failed)
 			driver(env).add_action(Action::ACTION_READ_CONFIG);
 			driver(env).add_action(Action::ACTION_CONFIGURE);
 			driver(env).add_action(Action::ACTION_REPORT);
+			if (driver(env).disable_all)
+				driver(env).add_action(Action::ACTION_EXIT);
+
 			break;
 		case Action::ACTION_READ_CONFIG:
 			driver(env).config_read();
@@ -659,6 +664,11 @@ int lx_emul_i915_action_to_process(int const action_failed)
 				driver(env).add_action(Action::ACTION_HOTPLUG, true);
 			} else
 				driver(env).generate_report();
+			break;
+		case Action::ACTION_EXIT:
+			/* good bye world */
+			driver(env).disable_all = false;
+			Lx_kit::env().env.parent().exit(0);
 			break;
 		default:
 			/* other actions are handled by Linux code */

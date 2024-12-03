@@ -333,6 +333,9 @@ static void close_unused_captures(struct drm_client_dev * const dev)
 	drm_connector_list_iter_end(&conn_iter);
 
 	for (unsigned i = 0; i < MAX_CONNECTORS; i++) {
+		if (i == CONNECTOR_ID_MIRROR)
+			continue;
+
 		if (!states[i].enabled || !states[i].mirrored)
 			continue;
 
