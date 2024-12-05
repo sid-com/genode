@@ -894,33 +894,43 @@ void lx_emul_i915_report_non_discrete(void * genode_data)
 
 void lx_emul_i915_iterate_modes(void * lx_data, void * genode_data)
 {
-	struct drm_connector    *connector   = lx_data;
-	struct drm_display_mode *mode        = NULL;
-	unsigned                 mode_id     = 0;
-	bool                     quirk_inuse = false;
+	struct drm_connector    * connector   = lx_data;
+	struct drm_display_mode * mode        = NULL;
+	struct drm_display_mode * prev_mode   = NULL;
+	unsigned                  mode_id     = 0;
+	bool                      quirk_inuse = false;
+	struct state            * state       = &states[connector->index];
+	struct genode_mode        conf_mode   = { };
 
-	/* mark modes as unavailable due to max_resolution enforcement */
-	struct genode_mode conf_mode = { };
+	if (connector->index >= MAX_CONNECTORS)
+		return;
+
 	lx_emul_i915_connector_config(connector->name, &conf_mode);
 
 	/* no fb and conf_mode.enabled is a temporary inconsistent state */
-	quirk_inuse = conf_mode.enabled && (connector->index < MAX_CONNECTORS ?
-	                                    !states[connector->index].fbs : true);
+	quirk_inuse = conf_mode.enabled && !state->fbs;
 
 	list_for_each_entry(mode, &connector->modes, head) {
+		bool skip = false;
+
 		mode_id ++;
 
 		if (!mode)
 			continue;
 
+		/* skip consecutive similar modes */
+		if (prev_mode) {
+			static_assert(sizeof(mode->name) == DRM_DISPLAY_MODE_LEN);
+			skip = (mode->hdisplay == prev_mode->hdisplay) &&
+			       (mode->vdisplay == prev_mode->vdisplay) &&
+			       (drm_mode_vrefresh(mode) == drm_mode_vrefresh(prev_mode)) &&
+			       !strncmp(mode->name, prev_mode->name, DRM_DISPLAY_MODE_LEN);
+		}
+
+		prev_mode = mode;
+
 		{
 			bool const max_mode = conf_mode.max_width && conf_mode.max_height;
-			bool const inuse = !quirk_inuse &&
-			                   connector->state && connector->state->crtc &&
-			                   connector->state->crtc->state &&
-			                   drm_mode_equal(&connector->state->crtc->state->mode, mode);
-			bool const mirror = (connector->index >= MAX_CONNECTORS) ||
-			                    states[connector->index].mirrored;
 
 			struct genode_mode config_report = {
 				.width     = mode->hdisplay,
@@ -929,8 +939,8 @@ void lx_emul_i915_iterate_modes(void * lx_data, void * genode_data)
 				.height_mm = mode->height_mm,
 				.preferred = mode->type & (DRM_MODE_TYPE_PREFERRED |
 				                           DRM_MODE_TYPE_DEFAULT),
-				.inuse     = inuse,
-				.mirror    = mirror,
+				.inuse     = !quirk_inuse && state->mode_id == mode_id,
+				.mirror    = state->mirrored,
 				.hz        = drm_mode_vrefresh(mode),
 				.id        = mode_id,
 				.enabled   = !max_mode ||
@@ -947,6 +957,10 @@ void lx_emul_i915_iterate_modes(void * lx_data, void * genode_data)
 				config_report.inuse = true;
 				quirk_inuse         = false;
 			}
+
+			/* skip similar mode and if it is not the used one */
+			if (skip && !config_report.inuse)
+				continue;
 
 			{
 				static_assert(sizeof(config_report.name) == DRM_DISPLAY_MODE_LEN);
