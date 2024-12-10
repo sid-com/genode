@@ -52,7 +52,7 @@ class Depot_remove::Archive_remover
 		Registry<Registered_path> _pkg_to_delete     { };
 		Registry<Registered_path> _archive_to_delete { };
 
-		void _remove_directory(Directory &depot, Path path) const
+		void _empty_directory(Directory &depot, Path path) const
 		{
 			Directory                 dir { depot, path };
 			Registry<Registered_path> dirent_files { };
@@ -62,19 +62,16 @@ class Depot_remove::Archive_remover
 					return;
 				else if (entry.type() == Vfs::Directory_service::Dirent_type::DIRECTORY)
 					_remove_directory(depot, Directory::join(path, entry.name()));
-				else
-					/*
-					 * Deleting file within the for_each_entry() confuses lx_fs dirent
-					 * offset computation and some files, such as 'README', is consitently
-					 * omitted, thus the unlink operation fails. Thus create a list
-					 * to delete file out of the lambda.
-					 */
-					new (_alloc) Registered_path(dirent_files, Directory::join(path, entry.name())); });
+				new (_alloc) Registered_path(dirent_files, Directory::join(path, entry.name())); });
 
 			dirent_files.for_each([&](Registered_path &sub_path) {
 				depot.unlink(sub_path);
 				destroy(_alloc, &sub_path); });
+		}
 
+		void _remove_directory(Directory &depot, Path path) const
+		{
+			_empty_directory(depot, path);
 			depot.unlink(path);
 		}
 
