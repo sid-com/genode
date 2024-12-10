@@ -186,11 +186,11 @@ struct Genode::Directory : Noncopyable, Interface
 
 		void for_each_entry(auto const &fn)
 		{
-			for (auto i = _fs.num_dirent(_path.string()); i != 0;) {
+			for (unsigned i = 0;; i++) {
 
 				Entry entry;
 
-				_handle->seek(--i * sizeof(entry._dirent));
+				_handle->seek(i * sizeof(entry._dirent));
 
 				while (!_handle->fs().queue_read(_handle, sizeof(entry._dirent)))
 					_io.commit_and_wait();
